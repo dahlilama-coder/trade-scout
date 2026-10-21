@@ -1,0 +1,1118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trade Scout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a working desk. Controls rail on the left, results on the right; stacks on phones. */
+:root{
+  --bg:#f2f3ee; --surface:#ffffff; --sunk:#e9ebe4; --ink:#1c2320; --muted:#5b6862; --line:#d9ded7;
+  --accent:#b0501c; --accent-ink:#ffffff; --turf:#2c6a4d;
+  --good:#2a7a4c; --good-bg:#e3f1e8; --bad:#ae3636; --bad-bg:#f7e4e2; --warn:#9b650f; --warn-bg:#f6ecd9;
+  --po:#f4e3d6; --po-line:#e2b593;
+  --f-display:"Saira Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111513; --surface:#191f1c; --sunk:#202724; --ink:#e5e9e5; --muted:#99a69f; --line:#2c3531;
+  --accent:#e57d40; --accent-ink:#1b0e06; --turf:#62b088;
+  --good:#64c18c; --good-bg:#1d3327; --bad:#ec7a76; --bad-bg:#3a2120; --warn:#e0ac55; --warn-bg:#382c17;
+  --po:#33251b; --po-line:#7a5233; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#111513; --surface:#191f1c; --sunk:#202724; --ink:#e5e9e5; --muted:#99a69f; --line:#2c3531;
+  --accent:#e57d40; --accent-ink:#1b0e06; --turf:#62b088;
+  --good:#64c18c; --good-bg:#1d3327; --bad:#ec7a76; --bad-bg:#3a2120; --warn:#e0ac55; --warn-bg:#382c17;
+  --po:#33251b; --po-line:#7a5233; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-body);-webkit-font-smoothing:antialiased}
+[hidden]{display:none!important}
+button,input,select{font:inherit;color:inherit}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* top bar */
+.top{background:var(--turf);color:#fff;padding-block:12px;padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px))}
+.top-in{max-width:1280px;margin:0 auto;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand h1{font:700 30px/1 var(--f-display);letter-spacing:.02em;margin:0;text-transform:uppercase}
+.brand span{font-size:12px;opacity:.85}
+.loader{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.loader label{font-size:12px;opacity:.9}
+.loader input{width:15.5em;max-width:60vw;padding:7px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.18);color:#fff;font-family:var(--f-mono);font-size:13px}
+.loader input::placeholder{color:rgba(255,255,255,.6)}
+.btn{border:0;border-radius:6px;padding:8px 14px;font-weight:600;cursor:pointer;background:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.top .btn.light{background:#fff;color:var(--turf)}
+
+.wrap{max-width:1280px;margin:0 auto;padding-block:16px 48px;padding-inline:max(16px,env(safe-area-inset-left,0px)) max(16px,env(safe-area-inset-right,0px))}
+.status{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;min-height:24px;margin-bottom:14px;color:var(--muted);font-size:13px}
+.status b{color:var(--ink)}
+.status .err{color:var(--bad);font-weight:600}
+.bar{height:4px;background:var(--sunk);border-radius:2px;overflow:hidden;width:160px}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .2s}
+.facts{display:flex;flex-wrap:wrap;gap:6px}
+.fact{background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--ink)}
+.fact.warn{background:var(--warn-bg);border-color:transparent;color:var(--warn)}
+.fact.src{background:var(--po);border-color:transparent}
+
+.desk{display:grid;grid-template-columns:290px minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:860px){.desk{grid-template-columns:minmax(0,1fr)}}
+.rail{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:16px;position:sticky;top:12px}
+@media (max-width:860px){.rail{position:static}}
+.field{display:grid;gap:6px}
+.field>label,.field>.lab{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.field select{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg label{text-align:center;padding:7px 4px;font-size:12px;cursor:pointer;border-right:1px solid var(--line);background:var(--bg);line-height:1.2}
+.seg label:last-child{border-right:0}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg input:checked+span{font-weight:600}
+.seg label:has(input:checked){background:var(--ink);color:var(--bg)}
+.seg label:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:-2px}
+.checks{display:flex;flex-wrap:wrap;gap:6px}
+.chk{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer;background:var(--bg)}
+.chk input{margin:0;accent-color:var(--accent)}
+.range{display:grid;gap:2px}
+.range input{width:100%;accent-color:var(--accent)}
+.range .ends{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.toggles{display:grid;gap:8px}
+.tg{display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer}
+.tg input{margin-top:3px;accent-color:var(--accent)}
+.tg small{display:block;color:var(--muted);font-size:12px}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px;overflow-x:auto}
+.tabs button{background:none;border:0;padding:10px 14px;font:600 15px/1 var(--f-display);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+
+.resulthead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.resulthead h2{font:700 22px/1.1 var(--f-display);margin:0;text-transform:uppercase;letter-spacing:.02em;text-wrap:balance}
+.filters{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pill{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 10px;font-size:12px;cursor:pointer}
+.pill[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.filters select{padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-size:12px}
+
+.trades{display:grid;gap:12px}
+.trade{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:12px}
+.trade>header{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.rank{font:700 22px/1 var(--f-display);color:var(--muted);min-width:1.6em}
+.kind{font:600 12px/1 var(--f-body);letter-spacing:.06em;text-transform:uppercase;background:var(--sunk);padding:4px 8px;border-radius:4px}
+.with{font-size:13px;color:var(--muted)}
+.with b{color:var(--ink)}
+.odds{margin-left:auto;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
+.odds.likely{background:var(--good-bg);color:var(--good)}
+.odds.maybe{background:var(--warn-bg);color:var(--warn)}
+.odds.long{background:var(--bad-bg);color:var(--bad)}
+.legs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.leg{background:var(--bg);border-radius:8px;padding:10px 12px;min-width:0}
+.leg h4{margin:0 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.leg h4 b{color:var(--ink)}
+.plist{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.plist li{display:grid;grid-template-columns:2.6em minmax(0,1fr) auto;gap:8px;align-items:center}
+.pos{font:600 11px/1 var(--f-mono);text-align:center;padding:3px 0;border-radius:3px;background:var(--sunk);color:var(--ink)}
+.pos.QB{background:#f3dcd5;color:#7a2d18}.pos.RB{background:#d8ebdf;color:#1d5a3a}.pos.WR{background:#dbe5f2;color:#22446e}.pos.TE{background:#f1e6cc;color:#6b4d0f}.pos.DEF,.pos.K{background:#e3e0ec;color:#3f3566}
+:root[data-theme="dark"] .pos.QB{background:#4a2a22;color:#f3c3b4}:root[data-theme="dark"] .pos.RB{background:#20402f;color:#a8dcbf}:root[data-theme="dark"] .pos.WR{background:#223349;color:#b3cbea}:root[data-theme="dark"] .pos.TE{background:#43371b;color:#e9d39c}:root[data-theme="dark"] .pos.DEF,:root[data-theme="dark"] .pos.K{background:#2f2a42;color:#cbc3ea}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .pos.QB{background:#4a2a22;color:#f3c3b4}:root:not([data-theme="light"]) .pos.RB{background:#20402f;color:#a8dcbf}:root:not([data-theme="light"]) .pos.WR{background:#223349;color:#b3cbea}:root:not([data-theme="light"]) .pos.TE{background:#43371b;color:#e9d39c}:root:not([data-theme="light"]) .pos.DEF,:root:not([data-theme="light"]) .pos.K{background:#2f2a42;color:#cbc3ea}}
+.pn{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pn small{color:var(--muted);margin-left:4px;font-size:11px}
+.inj{color:var(--bad);font-size:11px;font-weight:600;margin-left:4px}
+.ppw{font:500 12px var(--f-mono);color:var(--muted)}
+.impact{width:100%;border-collapse:collapse;font-size:13px}
+.impact th{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)}
+.impact th:first-child,.impact td:first-child{text-align:left}
+.impact td{padding:5px 6px;text-align:right;border-bottom:1px solid var(--line)}
+.impact tr:last-child td{border-bottom:0}
+.impact .me td:first-child{font-weight:600}
+.up{color:var(--good)}.down{color:var(--bad)}
+.why{margin:0;font-size:13px;color:var(--ink)}
+.why span{color:var(--muted)}
+details.more summary{cursor:pointer;font-size:12px;color:var(--accent);font-weight:600}
+details.more[open] summary{margin-bottom:8px}
+.drop{font-size:12px;color:var(--warn)}
+
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:10px;padding:28px;text-align:center;color:var(--muted)}
+.empty b{color:var(--ink)}
+
+.tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+table.grid{width:100%;border-collapse:collapse;font-size:13px;min-width:720px}
+table.grid th{position:sticky;top:0;background:var(--surface);text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap}
+table.grid th.r,table.grid td.r{text-align:right}
+table.grid td{padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.grid tr.mine td{background:var(--po)}
+table.grid input{accent-color:var(--accent)}
+.sched{display:flex;gap:4px}
+.op{font:500 11px/1 var(--f-mono);padding:3px 5px;border-radius:3px;background:var(--sunk);white-space:nowrap}
+.op.soft{background:var(--good-bg);color:var(--good)}
+.op.tough{background:var(--bad-bg);color:var(--bad)}
+.op .wx{margin-left:3px;font-size:10px;opacity:.85}
+.op.bye{opacity:.5}
+
+.outlook{display:grid;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h3{margin:0 0 10px;font:700 18px/1.1 var(--f-display);text-transform:uppercase;letter-spacing:.03em}
+.chart svg{width:100%;height:auto;display:block}
+.strength{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.st{background:var(--bg);border-radius:8px;padding:10px 12px}
+.st .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.st .v{font:700 24px/1.1 var(--f-display)}
+.st .s{font-size:12px;color:var(--muted)}
+.st.weak .v{color:var(--bad)}.st.strong .v{color:var(--good)}
+
+.prose{max-width:68ch;display:grid;gap:12px}
+.prose h3{font:700 18px/1.2 var(--f-display);text-transform:uppercase;margin:8px 0 0;letter-spacing:.03em}
+.prose p,.prose li{margin:0;color:var(--ink)}
+.prose ul{margin:0;padding-left:1.2em;display:grid;gap:6px}
+footer.note{margin-top:28px;font-size:12px;color:var(--muted);max-width:80ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><h1>Trade Scout</h1><span id="edition">Sleeper trade finder</span></div>
+    <form class="loader" id="loadForm">
+      <label for="leagueId">Sleeper league ID</label>
+      <input id="leagueId" inputmode="numeric" autocomplete="off" placeholder="e.g. 1388645768943906816" required>
+      <button class="btn light" id="loadBtn" type="submit">Load league</button>
+    </form>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="status" id="status" role="status" aria-live="polite">Enter a Sleeper league ID to start. You'll find it in the league's URL on sleeper.com.</div>
+
+  <div class="desk" id="desk" hidden>
+    <aside class="rail" aria-label="Trade settings">
+      <div class="field">
+        <label for="team">Trading as</label>
+        <select id="team"></select>
+      </div>
+      <div class="field">
+        <span class="lab">Rank trades by</span>
+        <div class="seg" role="radiogroup" aria-label="Rank trades by">
+          <label><input type="radio" name="mode" value="reg" id="modeReg"><span>Regular season</span></label>
+          <label><input type="radio" name="mode" value="bal" id="modeBal" checked><span>Balanced</span></label>
+          <label><input type="radio" name="mode" value="po" id="modePo"><span id="poLabel">Playoffs</span></label>
+        </div>
+        <p class="hint" id="modeHint">Balanced counts each playoff week double.</p>
+      </div>
+      <div class="field">
+        <span class="lab">Trade shapes</span>
+        <div class="checks">
+          <label class="chk"><input type="checkbox" id="t11" checked>1 for 1</label>
+          <label class="chk"><input type="checkbox" id="t21" checked>2 for 1</label>
+          <label class="chk"><input type="checkbox" id="t12" checked>1 for 2</label>
+          <label class="chk"><input type="checkbox" id="t22" checked>2 for 2</label>
+          <label class="chk"><input type="checkbox" id="t3" checked>3-team</label>
+        </div>
+      </div>
+      <div class="field" id="blendField" hidden>
+        <label for="blend">Projection source</label>
+        <div class="range">
+          <input type="range" id="blend" min="0" max="100" step="10" value="50">
+          <div class="ends"><span>Sleeper</span><span id="blendVal">50 / 50</span><span>Fantasy Footballers</span></div>
+        </div>
+      </div>
+      <div class="field">
+        <label for="sos">Matchup adjustment</label>
+        <div class="range">
+          <input type="range" id="sos" min="0" max="100" step="10" value="50">
+          <div class="ends"><span>Off</span><span id="sosVal">50%</span><span>Full</span></div>
+        </div>
+        <p class="hint" id="sosHint">How hard to lean on each opponent's points allowed by position.</p>
+      </div>
+      <div class="toggles">
+        <label class="tg"><input type="checkbox" id="wx" checked><span>Weather<small>Game-day forecast within 2 weeks; December cold and wind outlook after that</small></span></label>
+        <label class="tg"><input type="checkbox" id="inj" checked><span>Injuries<small>Discounts players listed Out, Doubtful or on IR</small></span></label>
+        <label class="tg"><input type="checkbox" id="longs"><span>Show long shots<small>Include trades the other team would likely turn down</small></span></label>
+      </div>
+      <button class="btn" id="runBtn" type="button">Find trades</button>
+    </aside>
+
+    <section aria-label="Results">
+      <nav class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="trades" id="tab-trades">Trades</button>
+        <button role="tab" aria-selected="false" data-tab="rank" id="tab-rank">Rankings</button>
+        <button role="tab" aria-selected="false" data-tab="team" id="tab-team">Team outlook</button>
+        <button role="tab" aria-selected="false" data-tab="how" id="tab-how">How it works</button>
+      </nav>
+
+      <div data-pane="trades">
+        <div class="resulthead">
+          <h2 id="tradesTitle">Trades</h2>
+          <div class="filters">
+            <button class="pill" data-kind="all" aria-pressed="true">All</button>
+            <button class="pill" data-kind="2" aria-pressed="false">2-team</button>
+            <button class="pill" data-kind="3" aria-pressed="false">3-team</button>
+            <select id="partnerFilter" aria-label="Filter by partner"><option value="">Any partner</option></select>
+          </div>
+        </div>
+        <div class="trades" id="trades"></div>
+      </div>
+
+      <div data-pane="rank" hidden>
+        <div class="resulthead">
+          <h2>League rankings</h2>
+          <div class="filters" id="posFilters">
+            <button class="pill" data-pos="ALL" aria-pressed="true">All</button>
+            <button class="pill" data-pos="QB" aria-pressed="false">QB</button>
+            <button class="pill" data-pos="RB" aria-pressed="false">RB</button>
+            <button class="pill" data-pos="WR" aria-pressed="false">WR</button>
+            <button class="pill" data-pos="TE" aria-pressed="false">TE</button>
+            <button class="pill" data-pos="DEF" aria-pressed="false">DEF</button>
+            <button class="pill" data-pos="K" aria-pressed="false">K</button>
+            <select id="ownerFilter" aria-label="Filter by owner">
+              <option value="">Everyone</option><option value="__fa">Free agents</option>
+            </select>
+          </div>
+        </div>
+        <div class="tablewrap"><table class="grid" id="rankTable"></table></div>
+      </div>
+
+      <div data-pane="team" hidden>
+        <div class="outlook" id="outlook"></div>
+      </div>
+
+      <div data-pane="how" hidden>
+        <div class="prose" id="how"></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="note" id="foot"></footer>
+</div>
+
+<script>
+const SCHEDULE = [[7,"PIT","NO"],[7,"NE","CHI"],[7,"SF","ATL"],[7,"CIN","BAL"],[7,"TB","CAR"],[7,"NYG","HOU"],[7,"IND","MIN"],[7,"MIA","NYJ"],[7,"CLE","TEN"],[7,"DEN","ARI"],[7,"GB","DET"],[7,"LAR","LV"],[7,"KC","SEA"],[7,"DAL","PHI"],[8,"CAR","GB"],[8,"BAL","BUF"],[8,"TEN","CIN"],[8,"ARI","DAL"],[8,"MIN","DET"],[8,"IND","JAX"],[8,"LV","NYJ"],[8,"CLE","PIT"],[8,"ATL","TB"],[8,"LAC","LAR"],[8,"KC","DEN"],[8,"NE","MIA"],[8,"PHI","WAS"],[8,"CHI","SEA"],[9,"CIN","ATL"],[9,"JAX","BAL"],[9,"DEN","CAR"],[9,"DAL","IND"],[9,"NYJ","KC"],[9,"DET","MIA"],[9,"CLE","NO"],[9,"NYG","PHI"],[9,"LAR","WAS"],[9,"HOU","LAC"],[9,"LV","SF"],[9,"GB","NE"],[9,"ARI","SEA"],[9,"TB","CHI"],[9,"BUF","MIN"],[10,"NE","DET"],[10,"WAS","NYG"],[10,"BUF","NYJ"],[10,"CAR","NO"],[10,"MIA","IND"],[10,"JAX","TEN"],[10,"MIN","GB"],[10,"HOU","CLE"],[10,"KC","ATL"],[10,"LAR","ARI"],[10,"SEA","LV"],[10,"SF","DAL"],[10,"PIT","CIN"],[10,"LAC","BAL"],[11,"MIN","SF"],[11,"IND","HOU"],[11,"MIA","BUF"],[11,"BAL","CAR"],[11,"NO","CHI"],[11,"TEN","DAL"],[11,"TB","DET"],[11,"ARI","KC"],[11,"JAX","NYG"],[11,"NYJ","LAC"],[11,"LV","DEN"],[11,"PIT","PHI"],[11,"CIN","WAS"],[12,"PHI","DAL"],[12,"GB","LAR"],[12,"CHI","DET"],[12,"KC","BUF"],[12,"DEN","PIT"],[12,"NO","CIN"],[12,"LV","CLE"],[12,"BAL","HOU"],[12,"NYG","IND"],[12,"NYJ","MIA"],[12,"ATL","MIN"],[12,"TEN","JAX"],[12,"WAS","ARI"],[12,"SEA","SF"],[12,"NE","LAC"],[12,"CAR","TB"],[13,"KC","LAR"],[13,"DET","ATL"],[13,"JAX","CHI"],[13,"CIN","CLE"],[13,"GB","NO"],[13,"SF","NYG"],[13,"LAC","TB"],[13,"WAS","TEN"],[13,"PHI","ARI"],[13,"MIA","DEN"],[13,"CAR","MIN"],[13,"BUF","NE"],[13,"HOU","PIT"],[13,"DAL","SEA"],[14,"MIN","NE"],[14,"TB","BAL"],[14,"NO","CAR"],[14,"ATL","CLE"],[14,"TEN","DET"],[14,"CHI","MIA"],[14,"DEN","NYJ"],[14,"IND","PHI"],[14,"HOU","WAS"],[14,"LAC","LV"],[14,"KC","CIN"],[14,"NYG","SEA"],[14,"LAR","SF"],[14,"BUF","GB"],[14,"PIT","JAX"],[15,"SF","LAC"],[15,"SEA","PHI"],[15,"CHI","BUF"],[15,"JAX","HOU"],[15,"CIN","CAR"],[15,"ATL","WAS"],[15,"NO","TB"],[15,"BAL","PIT"],[15,"CLE","NYG"],[15,"IND","TEN"],[15,"MIA","GB"],[15,"NYJ","ARI"],[15,"DAL","LAR"],[15,"DEN","LV"],[15,"DET","MIN"],[15,"NE","KC"],[16,"HOU","PHI"],[16,"GB","CHI"],[16,"BUF","DEN"],[16,"LAR","SEA"],[16,"CLE","BAL"],[16,"NE","NYJ"],[16,"ARI","NO"],[16,"LAC","MIA"],[16,"TEN","LV"],[16,"SF","KC"],[16,"JAX","DAL"],[16,"NYG","DET"],[16,"TB","ATL"],[16,"CIN","IND"],[16,"WAS","MIN"],[16,"CAR","PIT"],[17,"BAL","CIN"],[17,"NO","ATL"],[17,"SEA","CAR"],[17,"IND","CLE"],[17,"NYG","DAL"],[17,"BUF","MIA"],[17,"MIN","NYJ"],[17,"PIT","TEN"],[17,"LV","ARI"],[17,"DET","CHI"],[17,"PHI","SF"],[17,"HOU","GB"],[17,"DEN","NE"],[17,"KC","LAC"],[17,"LAR","TB"],[17,"WAS","JAX"],[18,"NYJ","BUF"],[18,"CLE","CIN"],[18,"LAC","DEN"],[18,"DET","GB"],[18,"JAX","IND"],[18,"LV","KC"],[18,"SEA","LAR"],[18,"CHI","MIN"],[18,"MIA","NE"],[18,"TB","NO"],[18,"PHI","NYG"],[18,"SF","ARI"],[18,"DAL","WAS"],[18,"ATL","CAR"],[18,"PIT","BAL"],[18,"TEN","HOU"]];
+const FFB = null;
+const DEFAULT_LEAGUE = "/*__DEFAULT_LEAGUE__*/";
+</script>
+<script>
+"use strict";
+/* ---------------- constants ---------------- */
+const POS_OK = new Set(["QB","RB","WR","TE","K","DEF"]);
+const ELIG = {QB:["QB"],RB:["RB"],WR:["WR"],TE:["TE"],K:["K"],DEF:["DEF"],FLEX:["RB","WR","TE"],WRRB_FLEX:["RB","WR"],REC_FLEX:["WR","TE"],SUPER_FLEX:["QB","RB","WR","TE"]};
+for (const k in ELIG) ELIG[k] = new Set(ELIG[k]);
+const SLOT_ORDER = ["QB","RB","WR","TE","K","DEF","WRRB_FLEX","REC_FLEX","FLEX","SUPER_FLEX"];
+const FLEX_SHARE = {FLEX:{RB:.45,WR:.45,TE:.1},WRRB_FLEX:{RB:.5,WR:.5},REC_FLEX:{WR:.7,TE:.3},SUPER_FLEX:{QB:.8,RB:.1,WR:.1}};
+// lat, lon, covered roof (dome/retractable/canopy), December climate tier (0 mild, 1 cool, 2 cold)
+const STAD = {ARI:[33.528,-112.263,1,0],ATL:[33.755,-84.401,1,0],BAL:[39.278,-76.623,0,1],BUF:[42.774,-78.787,0,2],CAR:[35.226,-80.853,0,0],CHI:[41.862,-87.617,0,2],CIN:[39.095,-84.516,0,1],CLE:[41.506,-81.700,0,2],DAL:[32.748,-97.093,1,0],DEN:[39.744,-105.020,0,1],DET:[42.340,-83.046,1,0],GB:[44.501,-88.062,0,2],HOU:[29.685,-95.411,1,0],IND:[39.760,-86.164,1,0],JAX:[30.324,-81.637,0,0],KC:[39.049,-94.484,0,1],LV:[36.091,-115.184,1,0],LAC:[33.953,-118.339,1,0],LAR:[33.953,-118.339,1,0],MIA:[25.958,-80.239,0,0],MIN:[44.974,-93.258,1,0],NE:[42.091,-71.264,0,2],NO:[29.951,-90.081,1,0],NYG:[40.813,-74.074,0,1],NYJ:[40.813,-74.074,0,1],PHI:[39.901,-75.168,0,1],PIT:[40.447,-80.016,0,1],SF:[37.403,-121.970,0,0],SEA:[47.595,-122.332,0,1],TB:[27.976,-82.503,0,0],TEN:[36.166,-86.771,0,1],WAS:[38.908,-76.864,0,1]};
+const TEAM_ALIAS = {WSH:"WAS",JAC:"JAX",LA:"LAR",OAK:"LV",SD:"LAC"};
+const normTeam = t => t ? (TEAM_ALIAS[t] || t) : t;
+// typical points scored by a position group per game, used to turn "points above expected" into a percentage
+const GROUP_AVG = {QB:18.5,RB:20,WR:27,TE:11.5,DEF:6,K:8.7};
+
+/* ---------------- state ---------------- */
+const S = {
+  league:null, rosters:[], users:[], state:null,
+  cw:0, lastWeek:0, poStart:15, weeks:[], NW:0, regIdx:[], poIdx:[], fullWeeks:[],
+  P:{}, teams:[], teamById:{}, maxRoster:15, slotOrder:[], sc:{}, recW:0,
+  sched:{}, wx:{}, sosTable:null, base:{}, repl:{}, gs:10,
+  results:[], focus:null, untouch:new Set(), loading:false,
+  rankPos:"ALL", kindFilter:"all", sort:{key:"m",dir:-1}
+};
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sig = x => 1/(1+Math.exp(-x));
+const clamp = (x,a,b) => Math.max(a,Math.min(b,x));
+const fmt1 = x => (x>0?"+":x<0?"−":"") + Math.abs(x).toFixed(1);
+const store = {
+  get(k){ try { return JSON.parse(localStorage.getItem("tradescout:"+k)); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem("tradescout:"+k, JSON.stringify(v)); } catch(e){} }
+};
+
+/* ---------------- fetching ---------------- */
+async function getJSON(url){
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${new URL(url).hostname} answered ${r.status}`);
+  return r.json();
+}
+function setStatus(html){ $("#status").innerHTML = html; }
+function progress(done,total,label){
+  setStatus(`<span>${esc(label)}</span><span class="bar"><i style="width:${Math.round(done/total*100)}%"></i></span><span class="num">${done}/${total}</span>`);
+}
+async function pool(tasks, limit, onDone){
+  const out = new Array(tasks.length); let i = 0, done = 0;
+  async function worker(){ while (i < tasks.length){ const k = i++; try { out[k] = await tasks[k](); } catch(e){ out[k] = {__err:e}; } done++; onDone && onDone(done); } }
+  await Promise.all(Array.from({length:Math.min(limit,tasks.length)}, worker));
+  return out;
+}
+
+/* ---------------- scoring ---------------- */
+const PA_B = [["pts_allow_0",0,0],["pts_allow_1_6",1,6],["pts_allow_7_13",7,13],["pts_allow_14_20",14,20],["pts_allow_21_27",21,27],["pts_allow_28_34",28,34],["pts_allow_35p",35,999]];
+const YA_B = [["yds_allow_0_100",0,99],["yds_allow_100_199",100,199],["yds_allow_200_299",200,299],["yds_allow_300_349",300,349],["yds_allow_350_399",350,399],["yds_allow_400_449",400,449],["yds_allow_450_499",450,499],["yds_allow_500_549",500,549],["yds_allow_550p",550,9999]];
+function bucket(v, B, sc){
+  // spread the probability between the two nearest buckets so averages behave smoothly
+  for (const [k,lo,hi] of B){ if (v >= lo && v <= hi + .999) return sc[k] || 0; }
+  return 0;
+}
+function hasKey(stats, prefix){ for (const k in stats) if (k.startsWith(prefix) && stats[k]) return true; return false; }
+function scoreStats(stats, pos){
+  const sc = S.sc; let s = 0, n = 0;
+  for (const k in stats){ const w = sc[k]; if (w){ const v = stats[k]; if (v){ s += v*w; n++; } } }
+  if (pos === "DEF"){
+    if (stats.pts_allow != null && !hasKey(stats,"pts_allow_")) { s += bucket(stats.pts_allow, PA_B, sc); n++; }
+    if (stats.yds_allow != null && !hasKey(stats,"yds_allow_")) { s += bucket(stats.yds_allow, YA_B, sc); n++; }
+  }
+  if (n < 2){
+    const f = S.recW >= 1 ? "pts_ppr" : S.recW >= .5 ? "pts_half_ppr" : "pts_std";
+    if (stats[f] > s) return stats[f];
+  }
+  return s;
+}
+function scoreFFB(r, pos){
+  // r: [name,team,pos,games,rk1,rk2,rk3, passYd,passTd,int,rushYd,rushTd,rec,recYd,recTd,fumLost]
+  const sc = S.sc;
+  let s = r[7]*(sc.pass_yd||0) + r[8]*(sc.pass_td||0) + r[9]*(sc.pass_int||0) + r[10]*(sc.rush_yd||0) + r[11]*(sc.rush_td||0)
+        + r[12]*(sc.rec||0) + r[13]*(sc.rec_yd||0) + r[14]*(sc.rec_td||0) + r[15]*(sc.fum_lost||0);
+  const bonus = {TE:"bonus_rec_te",RB:"bonus_rec_rb",WR:"bonus_rec_wr"}[pos];
+  if (bonus) s += r[12]*(sc[bonus]||0);
+  return s;
+}
+const normName = n => String(n||"").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g,"").replace(/[^a-z]/g,"");
+
+/* ---------------- loading ---------------- */
+async function loadLeague(id){
+  if (S.loading) return;
+  S.loading = true; $("#loadBtn").disabled = true;
+  try {
+    setStatus("Loading league…");
+    const base = "https://api.sleeper.app/v1/";
+    const [league, users, rosters, state] = await Promise.all([
+      getJSON(base+"league/"+id), getJSON(base+"league/"+id+"/users"),
+      getJSON(base+"league/"+id+"/rosters"), getJSON(base+"state/nfl")
+    ]);
+    if (!league || !league.league_id) throw new Error("No league found with that ID.");
+    if (league.sport !== "nfl") throw new Error("That league isn't an NFL league.");
+    if (String(league.season) !== String(state.season)) throw new Error(`That's a ${league.season} league. Use this season's league ID; Sleeper gives each season its own.`);
+    S.league = league; S.users = users || []; S.rosters = rosters || []; S.state = state;
+    S.sc = league.scoring_settings || {}; S.recW = S.sc.rec || 0;
+    S.cw = state.season_type === "regular" ? Math.max(1, state.week) : (state.season_type === "pre" ? 1 : 18);
+    S.poStart = league.settings.playoff_week_start || 15;
+    const pt = league.settings.playoff_teams || 6;
+    const rounds = Math.max(1, Math.ceil(Math.log2(pt)));
+    S.lastWeek = Math.min(18, S.poStart + rounds - 1);
+    if (S.cw > S.lastWeek) throw new Error("This league's season is over.");
+    S.weeks = []; for (let w = S.cw; w <= S.lastWeek; w++) S.weeks.push(w);
+    S.NW = S.weeks.length;
+    S.regIdx = []; S.poIdx = [];
+    S.weeks.forEach((w,i) => (w < S.poStart ? S.regIdx : S.poIdx).push(i));
+    S.fullWeeks = []; for (let w = S.cw; w <= 18; w++) S.fullWeeks.push(w);
+    const rp = league.roster_positions || [];
+    S.maxRoster = rp.filter(x => x !== "IR" && x !== "TAXI").length;
+    S.slotOrder = SLOT_ORDER.flatMap(s => rp.filter(x => x === s));
+    buildSchedule();
+
+    // projections for each remaining week, plus past stats for matchup strength when no expert data
+    const posQ = ["QB","RB","WR","TE","K","DEF"].map(p => "position%5B%5D="+p).join("&");
+    const tasks = S.fullWeeks.map(w => () => getJSON(`https://api.sleeper.app/projections/nfl/${league.season}/${w}?season_type=regular&${posQ}`));
+    const needStats = !FFB;
+    const statWeeks = []; if (needStats) for (let w = 1; w < S.cw; w++) statWeeks.push(w);
+    statWeeks.forEach(w => tasks.push(() => getJSON(`https://api.sleeper.app/stats/nfl/${league.season}/${w}?season_type=regular&${posQ}`)));
+    const total = tasks.length;
+    const res = await pool(tasks, 6, d => progress(d, total, "Downloading projections"));
+    const projRes = res.slice(0, S.fullWeeks.length);
+    const statRes = res.slice(S.fullWeeks.length);
+    if (projRes.every(r => r && r.__err)) throw new Error("Couldn't download Sleeper projections. Check your connection and try again.");
+    buildPlayers(projRes);
+    if (needStats) buildSosFromStats(statRes, statWeeks);
+    if (FFB) attachFFB();
+    buildTeams();
+    setStatus("Checking game-day weather…");
+    await loadWeather();
+    restorePrefs(id);
+    fillControls();
+    renderFacts();
+    $("#desk").hidden = false;
+    recompute();
+    runSearch();
+    store.set("lastLeague", id);
+  } catch (e){
+    console.error(e);
+    setStatus(`<span class="err">${esc(e.message || "Something went wrong loading the league.")}</span>`);
+  } finally {
+    S.loading = false; $("#loadBtn").disabled = false;
+  }
+}
+
+function buildSchedule(){
+  S.sched = {};
+  for (const [w,away,home] of SCHEDULE){
+    (S.sched[w] ||= {});
+    S.sched[w][away] = {opp:home, home:false, venue:home};
+    S.sched[w][home] = {opp:away, home:true, venue:home};
+  }
+}
+
+function buildPlayers(projRes){
+  const P = {}; const NF = S.fullWeeks.length;
+  projRes.forEach((rows, wi) => {
+    if (!Array.isArray(rows)) return;
+    for (const row of rows){
+      const pl = row.player; if (!pl) continue;
+      const pos = POS_OK.has(pl.position) ? pl.position : (pl.fantasy_positions||[]).find(p => POS_OK.has(p));
+      if (!pos) continue;
+      const id = String(row.player_id);
+      let p = P[id];
+      if (!p){
+        const name = pos === "DEF" ? `${pl.first_name||""} ${pl.last_name||""}`.trim() || id : `${pl.first_name||""} ${pl.last_name||""}`.trim();
+        p = P[id] = {id, name, pos, team:normTeam(row.team||pl.team), inj:null, rows:new Array(NF).fill(null), ffb:null};
+      }
+      if (wi === 0 || !p.injSet){ p.inj = pl.injury_status || null; p.injSet = true; }
+      if (row.team) p.team = normTeam(row.team);
+      const raw = scoreStats(row.stats || {}, pos);
+      const prev = p.rows[wi];
+      if (!prev || raw > prev.raw) p.rows[wi] = {opp:normTeam(row.opponent), date:row.date, team:normTeam(row.team), raw};
+    }
+  });
+  S.P = P;
+}
+
+function buildSosFromStats(statRes, statWeeks){
+  // average fantasy points (league scoring) each defense allowed to each position
+  const sum = {}, games = {};
+  statRes.forEach((rows, k) => {
+    if (!Array.isArray(rows)) return;
+    const w = statWeeks[k];
+    for (const row of rows){
+      const pl = row.player; if (!pl || !row.opponent) continue;
+      const pos = POS_OK.has(pl.position) ? pl.position : null; if (!pos) continue;
+      const st = row.stats || {}; if (!st.gp && !st.gms_active) continue;
+      const opp = normTeam(row.opponent);
+      const pts = scoreStats(st, pos);
+      ((sum[opp] ||= {})[pos] = (sum[opp][pos]||0) + pts);
+      (games[opp] ||= new Set()).add(w);
+    }
+  });
+  const avg = {}, lg = {}, lgN = {};
+  for (const t in sum){ const g = games[t].size; avg[t] = {g}; for (const pos in sum[t]){ avg[t][pos] = sum[t][pos]/g; lg[pos] = (lg[pos]||0) + avg[t][pos]; lgN[pos] = (lgN[pos]||0) + 1; } }
+  for (const pos in lg) lg[pos] /= lgN[pos];
+  S.sosTable = {avg, lg};
+}
+
+function attachFFB(){
+  const idx = {};
+  for (const id in S.P){ const p = S.P[id]; if (p.pos === "DEF" || p.pos === "K") continue; (idx[normName(p.name)+"|"+p.pos] ||= []).push(p); }
+  let matched = 0;
+  for (const r of FFB.ros){
+    const list = idx[normName(r[0])+"|"+r[2]]; if (!list) continue;
+    const p = list.length === 1 ? list[0] : (list.find(x => x.team === normTeam(r[1])) || list[0]);
+    const ranks = [r[4],r[5],r[6]].filter(x => x > 0);
+    p.ffb = {pts:scoreFFB(r, p.pos), games:r[3], rank: ranks.length ? ranks.reduce((a,b)=>a+b,0)/ranks.length : null};
+    matched++;
+  }
+  S.ffbMatched = matched;
+}
+
+function buildTeams(){
+  const uById = {}; for (const u of S.users) uById[u.user_id] = u;
+  S.teams = S.rosters.map(r => {
+    const u = uById[r.owner_id] || {};
+    const name = (u.metadata && u.metadata.team_name) || u.display_name || `Team ${r.roster_id}`;
+    const ids = (r.players || []).map(String);
+    for (const id of ids){
+      if (!S.P[id]) S.P[id] = {id, name: isNaN(+id) ? id+" D/ST" : "Unlisted player", pos: isNaN(+id) ? "DEF" : "?", team:null, inj:null, rows:new Array(S.fullWeeks.length).fill(null), ffb:null};
+      S.P[id].owner = r.roster_id;
+    }
+    return {rid:r.roster_id, name, manager:u.display_name||"", ids, reserve:new Set((r.reserve||[]).map(String)),
+            rec:`${r.settings?.wins||0}-${r.settings?.losses||0}${r.settings?.ties?"-"+r.settings.ties:""}`};
+  });
+  S.teamById = {}; for (const t of S.teams) S.teamById[t.rid] = t;
+}
+
+async function loadWeather(){
+  S.wx = {};
+  const now = Date.now();
+  const need = {}; // venue -> list of {w, date}
+  for (const w of S.weeks){
+    const day = {};
+    for (const id in S.P){ const p = S.P[id]; const row = p.rows[w - S.cw]; if (row && row.team && row.date) day[row.team] = row.date; }
+    const g = S.sched[w] || {};
+    for (const team in g){
+      const v = g[team].venue; if (!g[team].home) continue;
+      const st = STAD[v]; if (!st) continue;
+      const key = w+"|"+v;
+      if (st[2]) { S.wx[key] = {src:"dome"}; continue; }
+      const date = day[team] || day[g[team].opp];
+      const ms = date ? Date.parse(date+"T18:00:00Z") : NaN;
+      if (!isNaN(ms) && ms - now < 15*864e5 && ms > now - 864e5) (need[v] ||= []).push({w, date});
+      else if (w >= 13 && st[3] > 0) S.wx[key] = {src:"season", tier:st[3]};
+    }
+  }
+  const venues = Object.keys(need); if (!venues.length) return;
+  try {
+    const lat = venues.map(v => STAD[v][0]).join(","), lon = venues.map(v => STAD[v][1]).join(",");
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,precipitation,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&forecast_days=16&timezone=GMT`;
+    let data = await getJSON(url); if (!Array.isArray(data)) data = [data];
+    venues.forEach((v, i) => {
+      const h = data[i] && data[i].hourly; if (!h) return;
+      for (const {w, date} of need[v]){
+        let wind = 0, rain = 0, temp = 999, n = 0;
+        h.time.forEach((t, k) => { if (t.startsWith(date)){ const hr = +t.slice(11,13); if (hr >= 17){ wind += h.wind_speed_10m[k]; rain += h.precipitation[k]; temp = Math.min(temp, h.temperature_2m[k]); n++; } } });
+        if (n) S.wx[w+"|"+v] = {src:"forecast", wind: wind/n, rain, temp, date};
+      }
+    });
+  } catch(e){ console.warn("weather", e); }
+}
+
+/* ---------------- adjustments ---------------- */
+function opts(){
+  return {
+    mode: document.querySelector('input[name="mode"]:checked').value,
+    blend: FFB ? +$("#blend").value/100 : 0,
+    sos: +$("#sos").value/100,
+    wx: $("#wx").checked, inj: $("#inj").checked, longs: $("#longs").checked,
+    t11: $("#t11").checked, t21: $("#t21").checked, t12: $("#t12").checked, t22: $("#t22").checked, t3: $("#t3").checked
+  };
+}
+function sosRaw(opp, pos){
+  // returns a multiplier at full strength (1 = average matchup)
+  if (!opp) return 1;
+  if (FFB && FFB.mu){
+    const t = FFB.mu[opp]; if (!t) return 1;
+    const v = t[pos === "DEF" ? "D" : pos]; if (v == null) return 1;
+    return 1 + clamp(v / GROUP_AVG[pos], -.4, .4);
+  }
+  if (S.sosTable){
+    const a = S.sosTable.avg[opp]; const lg = S.sosTable.lg[pos];
+    if (!a || !a[pos] || !lg) return 1;
+    const shrink = a.g/(a.g+2);
+    return 1 + clamp(a[pos]/lg - 1, -.4, .4)*shrink;
+  }
+  return 1;
+}
+function wxFor(w, team){
+  const g = S.sched[w] && S.sched[w][team]; if (!g) return null;
+  return S.wx[w+"|"+g.venue] || null;
+}
+function wxFactor(pos, c){
+  if (!c || c.src === "dome") return 1;
+  let pass = 1, kick = 1, run = 1;
+  if (c.src === "forecast"){
+    if (c.wind >= 20){ pass *= .88; kick *= .8; } else if (c.wind >= 15){ pass *= .94; kick *= .9; }
+    if (c.rain >= .15){ pass *= .95; kick *= .95; run *= 1.02; }
+    if (c.temp <= 20){ pass *= .97; kick *= .95; }
+  } else if (c.src === "season"){
+    if (c.tier === 2){ pass *= .96; kick *= .92; run *= 1.01; } else { pass *= .985; kick *= .96; }
+  }
+  if (pos === "K") return kick;
+  if (pos === "RB") return run;
+  if (pos === "DEF") return 1 + (1 - pass)*.8;
+  return pass;
+}
+function wxLabel(c){
+  if (!c) return "";
+  if (c.src === "dome") return "roof";
+  if (c.src === "forecast"){
+    const bits = [];
+    if (c.wind >= 15) bits.push(Math.round(c.wind)+" mph");
+    if (c.rain >= .15) bits.push("wet");
+    if (c.temp <= 25) bits.push(Math.round(c.temp)+"°");
+    return bits.join(" ");
+  }
+  return c.tier === 2 ? "cold" : "";
+}
+function injFactor(status, i){
+  if (!status) return 1;
+  if (["IR","PUP","Sus","NA","COV","DNR"].includes(status)) return i < 4 ? 0 : .8;
+  if (status === "Out") return i === 0 ? 0 : 1;
+  if (status === "Doubtful") return i === 0 ? .3 : 1;
+  if (status === "Questionable") return i === 0 ? .9 : 1;
+  return 1;
+}
+
+function recompute(){
+  const o = opts();
+  const NW = S.NW, NF = S.fullWeeks.length;
+  for (const id in S.P){
+    const p = S.P[id];
+    // blend Sleeper weekly shape with the expert rest-of-season total
+    let scale = 1;
+    if (p.ffb && o.blend > 0){
+      let sl = 0; for (let i = 0; i < NF; i++) sl += p.rows[i] ? p.rows[i].raw : 0;
+      if (sl > 5) scale = clamp((o.blend*p.ffb.pts + (1-o.blend)*sl)/sl, .4, 2.2);
+    }
+    const pts = new Float64Array(NW);
+    for (let i = 0; i < NW; i++){
+      const r = p.rows[i]; if (!r) continue;
+      let f = scale;
+      if (o.sos > 0) f *= 1 + (sosRaw(r.opp, p.pos) - 1)*o.sos;
+      if (o.wx) f *= wxFactor(p.pos, wxFor(S.weeks[i], r.team || p.team));
+      if (o.inj) f *= injFactor(p.inj, i);
+      pts[i] = r.raw * f;
+    }
+    p.pts = pts;
+    let reg = 0, po = 0; for (const i of S.regIdx) reg += pts[i]; for (const i of S.poIdx) po += pts[i];
+    p.reg = reg; p.po = po; p.m = metricOf(reg, po, o.mode);
+  }
+  // replacement level per position, in the chosen metric
+  const starters = {QB:0,RB:0,WR:0,TE:0,K:0,DEF:0};
+  for (const s of S.slotOrder){ if (starters[s] != null) starters[s]++; else for (const [pos,sh] of Object.entries(FLEX_SHARE[s]||{})) starters[pos] += sh; }
+  const byPos = {};
+  for (const id in S.P){ const p = S.P[id]; if (POS_OK.has(p.pos)) (byPos[p.pos] ||= []).push(p.m); }
+  S.repl = {};
+  const nT = S.teams.length || 12;
+  for (const pos in byPos){ const a = byPos[pos].sort((x,y)=>y-x); const n = Math.round(nT*(starters[pos]||0)); S.repl[pos] = a[Math.min(n, a.length-1)] || 0; }
+  for (const id in S.P){ const p = S.P[id]; p.val = Math.max(0, p.m - (S.repl[p.pos]||0)); }
+  // team baselines
+  S.base = {}; let tot = 0;
+  for (const t of S.teams){ S.base[t.rid] = teamWeeks(t.ids); tot += metricArr(S.base[t.rid], o.mode).m; }
+  S.gs = Math.max(6, (tot / Math.max(1,S.teams.length)) * .025);
+  S.mode = o.mode;
+}
+const metricOf = (r, p, mode) => mode === "reg" ? r : mode === "po" ? p : r + 2*p;
+function metricArr(arr, mode, base){
+  let r = 0, p = 0;
+  for (const i of S.regIdx) r += arr[i] - (base ? base[i] : 0);
+  for (const i of S.poIdx) p += arr[i] - (base ? base[i] : 0);
+  return {r, p, m: metricOf(r, p, mode || S.mode)};
+}
+
+/* ---------------- lineups ---------------- */
+function lineupWeek(ids, wi, collect){
+  const arr = [];
+  for (const id of ids){ const p = S.P[id]; if (p && p.pts && p.pts[wi] > 0) arr.push(p); }
+  arr.sort((a,b) => b.pts[wi] - a.pts[wi]);
+  const used = new Uint8Array(arr.length); let tot = 0;
+  for (const slot of S.slotOrder){
+    const el = ELIG[slot];
+    for (let j = 0; j < arr.length; j++){
+      if (!used[j] && el.has(arr[j].pos)){ used[j] = 1; tot += arr[j].pts[wi]; if (collect) collect.push(arr[j].id); break; }
+    }
+  }
+  return tot;
+}
+function teamWeeks(ids){ const out = new Float64Array(S.NW); for (let i = 0; i < S.NW; i++) out[i] = lineupWeek(ids, i); return out; }
+function starterCounts(ids){
+  const c = {};
+  for (let i = 0; i < S.NW; i++){ const got = []; lineupWeek(ids, i, got); for (const id of got) c[id] = (c[id]||0) + 1; }
+  return c;
+}
+
+/* ---------------- trade engine ---------------- */
+function candidates(t, n, isFocus){
+  return t.ids.filter(id => { const p = S.P[id]; return p && POS_OK.has(p.pos) && p.m > 0 && !(isFocus && S.untouch.has(id)); })
+    .sort((a,b) => (S.P[b].val - S.P[a].val) || (S.P[b].m - S.P[a].m)).slice(0, n);
+}
+function evalTrade(moves){
+  const inv = new Map();
+  for (const mv of moves){
+    for (const rid of [mv.from, mv.to]) if (!inv.has(rid)) inv.set(rid, {give:[], get:[]});
+    inv.get(mv.from).give.push(mv.pid); inv.get(mv.to).get.push(mv.pid);
+  }
+  const out = [];
+  for (const [rid, io] of inv){
+    const t = S.teamById[rid];
+    let ids = t.ids.filter(id => !io.give.includes(id)).concat(io.get);
+    const drops = [];
+    if (io.get.length > io.give.length){
+      let active = ids.filter(id => !t.reserve.has(id)).length;
+      while (active > S.maxRoster){
+        const pool = ids.filter(id => !io.get.includes(id) && !t.reserve.has(id)).sort((a,b) => (S.P[a].m||0) - (S.P[b].m||0));
+        if (!pool.length) break;
+        drops.push(pool[0]); ids = ids.filter(id => id !== pool[0]); active--;
+      }
+    }
+    const wk = teamWeeks(ids);
+    const d = metricArr(wk, S.mode, S.base[rid]);
+    const parity = io.get.reduce((s,id)=>s+(S.P[id].val||0),0) - io.give.reduce((s,id)=>s+(S.P[id].val||0),0)
+                 - drops.reduce((s,id)=>s+(S.P[id].val||0),0);
+    out.push({rid, give:io.give, get:io.get, drops, ids, wk, d, parity});
+  }
+  return out;
+}
+function acceptP(side){ return sig((side.d.m*1.1 + side.parity*.6)/S.gs + .15); }
+
+function* pairs(a){ for (let i = 0; i < a.length; i++) for (let j = i+1; j < a.length; j++) yield [a[i], a[j]]; }
+
+function search(){
+  const o = opts();
+  const A = S.teamById[S.focus]; if (!A) return [];
+  const others = S.teams.filter(t => t.rid !== A.rid);
+  const cand = {};
+  cand[A.rid] = candidates(A, 12, true);
+  for (const t of others) cand[t.rid] = candidates(t, 10, false);
+  // quick single-player add/remove values for every team, used to shortlist
+  const add = {}, rem = {};
+  const allC = new Set(Object.values(cand).flat());
+  for (const t of S.teams){
+    add[t.rid] = {}; rem[t.rid] = {};
+    const b = S.base[t.rid];
+    for (const id of allC){
+      if (t.ids.includes(id)) rem[t.rid][id] = metricArr(teamWeeks(t.ids.filter(x => x !== id)), o.mode, b).m;
+      else add[t.rid][id] = metricArr(teamWeeks(t.ids.concat(id)), o.mode, b).m;
+    }
+  }
+  const gs = S.gs, shortlist = [];
+  const push = (moves, gA, others) => {
+    let k = gA; for (const g of others) k *= sig(g/gs + .15);
+    shortlist.push({moves, key:k});
+  };
+  const cA = cand[A.rid];
+  const singlesA = cA.map(x => [x]), pairsA = [...pairs(cA)];
+  for (const B of others){
+    const cB = cand[B.rid];
+    const singlesB = cB.map(x => [x]), pairsB = [...pairs(cB)];
+    const shapes = [];
+    if (o.t11) shapes.push([singlesA, singlesB]);
+    if (o.t21) shapes.push([pairsA, singlesB]);
+    if (o.t12) shapes.push([singlesA, pairsB]);
+    if (o.t22) shapes.push([pairsA, pairsB]);
+    for (const [GA, GB] of shapes){
+      for (const give of GA) for (const get of GB){
+        let gA = 0, gB = 0;
+        for (const id of get) gA += add[A.rid][id]; for (const id of give) gA += rem[A.rid][id];
+        if (gA <= 0) continue;
+        for (const id of give) gB += add[B.rid][id]; for (const id of get) gB += rem[B.rid][id];
+        if (gB < -2*gs) continue;
+        push([...give.map(pid => ({from:A.rid, to:B.rid, pid})), ...get.map(pid => ({from:B.rid, to:A.rid, pid}))], gA, [gB]);
+      }
+    }
+  }
+  if (o.t3){
+    const c3 = {}; for (const t of others) c3[t.rid] = cand[t.rid].slice(0, 8);
+    for (const B of others) for (const C of others){
+      if (B === C) continue;
+      // A sends a to B, B sends b to C, C sends c to A
+      for (const a of cA) for (const c of c3[C.rid]){
+        const gA = add[A.rid][c] + rem[A.rid][a]; if (gA <= 0) continue;
+        for (const b of c3[B.rid]){
+          const gB = add[B.rid][a] + rem[B.rid][b]; if (gB < -gs) continue;
+          const gC = add[C.rid][b] + rem[C.rid][c]; if (gC < -gs) continue;
+          push([{from:A.rid,to:B.rid,pid:a},{from:B.rid,to:C.rid,pid:b},{from:C.rid,to:A.rid,pid:c}], gA*.92, [gB, gC]);
+        }
+      }
+    }
+  }
+  shortlist.sort((x,y) => y.key - x.key);
+  // exact evaluation of the best candidates; keep 3-team deals in the mix
+  const two = shortlist.filter(s => s.moves.length < 3 || new Set(s.moves.flatMap(m=>[m.from,m.to])).size === 2).slice(0, 1600);
+  const three = shortlist.filter(s => new Set(s.moves.flatMap(m=>[m.from,m.to])).size === 3).slice(0, 400);
+  const results = [];
+  for (const s of two.concat(three)){
+    const sides = evalTrade(s.moves);
+    const me = sides.find(x => x.rid === A.rid); const them = sides.filter(x => x.rid !== A.rid);
+    if (me.d.m < .5) continue;
+    const ps = them.map(acceptP); const pMin = Math.min(...ps);
+    if (pMin < (o.longs ? .1 : .4)) continue;
+    const teamsN = sides.length;
+    const shape = teamsN === 3 ? "3-team" : `${me.give.length} for ${me.get.length}`;
+    const cx = teamsN === 3 ? .9 : (me.give.length + me.get.length > 2 ? .97 : 1);
+    // deals that also help the other lineups rank higher
+    const mutual = them.every(s => s.d.m > 0) ? 1.15 : 1;
+    results.push({sides, me, them, ps, pMin, teamsN, shape, score: me.d.m * Math.pow(pMin, 1.5) * cx * mutual});
+  }
+  results.sort((a,b) => b.score - a.score);
+  // keep the list varied
+  const out = [], seenGet = {}, seenGive = {}, seenKey = new Set(), perPartner = {};
+  for (const r of results){
+    const key = r.sides.map(s => s.rid+":"+[...s.give].sort().join(",")).sort().join("|");
+    if (seenKey.has(key)) continue;
+    const g = r.me.get.slice().sort().join(","), v = r.me.give.slice().sort().join(",");
+    const pk = r.them.map(s => s.rid).sort().join("+");
+    if ((seenGet[g]||0) >= 2 || (seenGive[v]||0) >= 3 || (perPartner[pk]||0) >= 5) continue;
+    seenKey.add(key); seenGet[g] = (seenGet[g]||0)+1; seenGive[v] = (seenGive[v]||0)+1; perPartner[pk] = (perPartner[pk]||0)+1;
+    out.push(r); if (out.length >= 40) break;
+  }
+  return out;
+}
+
+function runSearch(){
+  const btn = $("#runBtn"); btn.disabled = true; btn.textContent = "Searching…";
+  $("#trades").innerHTML = `<div class="empty">Checking every team's roster for deals…</div>`;
+  setTimeout(() => {
+    try {
+      recompute();
+      const t0 = performance.now();
+      S.results = search();
+      S.searchMs = Math.round(performance.now() - t0);
+      renderTrades(); renderRankings(); renderOutlook(); renderHow();
+      setStatus(`<b>${esc(S.league.name)}</b><span>Trading as ${esc(S.teamById[S.focus].name)} · ${S.results.length} trades found</span>`);
+    } catch (e){ console.error(e); setStatus(`<span class="err">Search failed: ${esc(e.message)}</span>`); }
+    btn.disabled = false; btn.textContent = "Find trades";
+  }, 30);
+}
+
+/* ---------------- rendering ---------------- */
+function teamName(rid){ return S.teamById[rid] ? S.teamById[rid].name : "Free agent"; }
+function perWeek(p){ return S.regIdx.length ? p.reg / S.regIdx.length : (S.poIdx.length ? p.po/S.poIdx.length : 0); }
+function playerLi(id){
+  const p = S.P[id];
+  const inj = p.inj && !["Questionable"].includes(p.inj) ? `<span class="inj">${esc(p.inj)}</span>` : "";
+  return `<li><span class="pos ${esc(p.pos)}">${esc(p.pos)}</span><span class="pn">${esc(p.name)}<small>${esc(p.team||"FA")}</small>${inj}</span><span class="ppw" title="Projected points per regular-season week">${perWeek(p).toFixed(1)}</span></li>`;
+}
+function oddsBadge(p){
+  const cls = p >= .6 ? "likely" : p >= .4 ? "maybe" : "long";
+  const txt = p >= .6 ? "Likely yes" : p >= .4 ? "Worth asking" : "Long shot";
+  return `<span class="odds ${cls}" title="Estimated chance the other side accepts: ${Math.round(p*100)}%">${txt}</span>`;
+}
+function deltaCell(v, perWk){
+  const cls = v > .05 ? "up" : v < -.05 ? "down" : "";
+  return `<td class="num ${cls}">${fmt1(v)}${perWk?"<small>/wk</small>":""}</td>`;
+}
+function whyText(r){
+  const A = S.teamById[S.focus];
+  const before = starterCounts(A.ids), after = starterCounts(r.me.ids);
+  const n = S.NW; const bits = [];
+  for (const id of r.me.get){ bits.push(`${esc(S.P[id].name)} starts ${after[id]||0} of ${n} weeks for you`); }
+  for (const id of r.me.give){ const c = before[id]||0; bits.push(c <= n/2 ? `${esc(S.P[id].name)} only starts ${c} of ${n} weeks now` : `you lose ${esc(S.P[id].name)} (${c} of ${n} starts)`); }
+  const themBits = r.them.map(s => {
+    const T = S.teamById[s.rid]; const aft = starterCounts(s.ids);
+    const got = s.get.map(id => `${esc(S.P[id].name)} (${aft[id]||0}/${n})`).join(", ");
+    return `${esc(T.name)} gets ${got}`;
+  });
+  return `${bits.join("; ")}. <span>${themBits.join(" · ")}.</span>`;
+}
+function weekDeltaSVG(r){
+  const W = 640, H = 150, pad = 26, n = S.NW;
+  const d = Array.from({length:n}, (_,i) => r.me.wk[i] - S.base[S.focus][i]);
+  const mx = Math.max(2, ...d.map(Math.abs));
+  const bw = (W - pad*2) / n, mid = H/2;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Your projected points change by week">`;
+  S.poIdx.forEach(i => { s += `<rect x="${pad + i*bw}" y="8" width="${bw}" height="${H-30}" fill="var(--po)"></rect>`; });
+  s += `<line x1="${pad}" x2="${W-pad}" y1="${mid}" y2="${mid}" stroke="var(--line)"></line>`;
+  d.forEach((v,i) => {
+    const h = Math.abs(v)/mx*(mid-14); const y = v >= 0 ? mid - h : mid;
+    s += `<rect x="${pad + i*bw + bw*.2}" y="${y}" width="${bw*.6}" height="${Math.max(1,h)}" fill="${v>=0?"var(--good)":"var(--bad)"}"><title>Week ${S.weeks[i]}: ${fmt1(v)} pts</title></rect>`;
+    s += `<text x="${pad + i*bw + bw/2}" y="${H-6}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${S.weeks[i]}</text>`;
+  });
+  s += `<text x="${pad}" y="20" font-size="11" fill="var(--muted)">+${mx.toFixed(1)}</text><text x="${pad}" y="${H-24}" font-size="11" fill="var(--muted)">−${mx.toFixed(1)}</text></svg>`;
+  return s;
+}
+function schedChips(p){
+  return S.poIdx.map(i => {
+    const w = S.weeks[i]; const g = S.sched[w] && S.sched[w][p.team];
+    if (!g) return `<span class="op bye" title="Week ${w}">BYE</span>`;
+    const f = sosRaw(g.opp, p.pos);
+    const tone = f >= 1.08 ? "soft" : f <= .92 ? "tough" : "";
+    const c = S.wx[w+"|"+g.venue]; const wl = wxLabel(c);
+    const title = `Week ${w}: ${g.home?"vs":"at"} ${g.opp}. Matchup ${f>=1?"+":""}${Math.round((f-1)*100)}%${wl?" · "+wl:""}`;
+    return `<span class="op ${tone}" title="${esc(title)}">${g.home?"":"@"}${esc(g.opp)}${wl&&wl!=="roof"?`<span class="wx">${esc(wl)}</span>`:""}</span>`;
+  }).join("");
+}
+function renderTrades(){
+  const box = $("#trades");
+  const pf = $("#partnerFilter").value;
+  let list = S.results;
+  if (S.kindFilter !== "all") list = list.filter(r => String(r.teamsN) === S.kindFilter);
+  if (pf) list = list.filter(r => r.them.some(s => String(s.rid) === pf));
+  const modeName = {reg:"regular season", po:`playoffs (Wk ${S.weeks[S.poIdx[0]]||S.poStart}–${S.lastWeek})`, bal:"regular season + playoffs"}[S.mode];
+  $("#tradesTitle").textContent = `Best trades for ${S.teamById[S.focus].name}`;
+  if (!list.length){
+    box.innerHTML = `<div class="empty"><b>No trades cleared the bar.</b><br>Try turning on long shots, adding 2-for-2 or 3-team shapes, or marking fewer players as keepers on the Team outlook tab.</div>`;
+    return;
+  }
+  const regN = Math.max(1, S.regIdx.length);
+  box.innerHTML = list.map((r, k) => {
+    const legs = r.teamsN === 2
+      ? `<div class="leg"><h4>You get</h4><ul class="plist">${r.me.get.map(playerLi).join("")}</ul></div>
+         <div class="leg"><h4>You give</h4><ul class="plist">${r.me.give.map(playerLi).join("")}</ul></div>`
+      : r.sides.map(s => {
+          const from = s.get.map(id => r.sides.find(x => x.give.includes(id))).filter(Boolean).map(x => x.rid === S.focus ? "you" : teamName(x.rid));
+          return `<div class="leg"><h4><b>${s.rid===S.focus?"You":esc(teamName(s.rid))}</b> get${s.rid===S.focus?"":"s"} · from ${esc(from.join(", "))}</h4><ul class="plist">${s.get.map(playerLi).join("")}</ul></div>`;
+        }).join("");
+    const rows = [r.me, ...r.them].map((s,i) => `<tr class="${i===0?"me":""}"><td>${i===0?"You":esc(teamName(s.rid))}</td>${deltaCell(s.d.r/regN, true)}${deltaCell(s.d.p)}${i===0?"<td></td>":`<td class="num">${Math.round(r.ps[i-1]*100)}%</td>`}</tr>`).join("");
+    const drops = r.sides.filter(s => s.drops.length).map(s => `${s.rid===S.focus?"You'd":esc(teamName(s.rid))+" would"} need to drop ${s.drops.map(id=>esc(S.P[id].name)).join(", ")}`).join(". ");
+    const incoming = r.me.get.map(id => { const p = S.P[id]; return `<li><span class="pos ${esc(p.pos)}">${esc(p.pos)}</span><span class="pn">${esc(p.name)}</span><span class="sched">${schedChips(p)}</span></li>`; }).join("");
+    return `<article class="trade">
+      <header><span class="rank num">${k+1}</span><span class="kind">${esc(r.shape)}</span><span class="with">with <b>${r.them.map(s=>esc(teamName(s.rid))).join("</b> and <b>")}</b></span>${oddsBadge(r.pMin)}</header>
+      <div class="legs">${legs}</div>
+      <table class="impact"><thead><tr><th>Team</th><th>Regular season</th><th>Playoffs total</th><th>Accepts</th></tr></thead><tbody>${rows}</tbody></table>
+      <p class="why">${whyText(r)}</p>
+      ${drops?`<p class="drop">${drops}.</p>`:""}
+      <details class="more"><summary>Week by week and playoff matchups</summary>
+        <div class="chart">${weekDeltaSVG(r)}</div>
+        <h4 style="margin:10px 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Incoming playoff schedule (Wk ${S.poIdx.map(i=>S.weeks[i]).join(", ")})</h4>
+        <ul class="plist">${incoming}</ul>
+      </details>
+    </article>`;
+  }).join("");
+}
+
+function renderRankings(){
+  const owner = $("#ownerFilter").value;
+  let ps = Object.values(S.P).filter(p => POS_OK.has(p.pos) && p.pts && (p.reg + p.po) > 0);
+  if (S.rankPos !== "ALL") ps = ps.filter(p => p.pos === S.rankPos);
+  if (owner === "__fa") ps = ps.filter(p => !p.owner); else if (owner) ps = ps.filter(p => String(p.owner) === owner);
+  const k = S.sort.key, dir = S.sort.dir;
+  const val = p => k === "name" ? p.name : k === "reg" ? perWeek(p) : k === "po" ? p.po : k === "ffb" ? -(p.ffb && p.ffb.rank || 999) : p.m;
+  ps.sort((a,b) => { const x = val(a), y = val(b); return (typeof x === "string" ? x.localeCompare(y) : x - y) * dir; });
+  const posRank = {};
+  const rankOrder = Object.values(S.P).filter(p => p.pts).sort((a,b) => b.m - a.m);
+  const cnt = {}; for (const p of rankOrder){ cnt[p.pos] = (cnt[p.pos]||0)+1; posRank[p.id] = p.pos + cnt[p.pos]; }
+  const ffbCol = FFB ? `<th class="r" data-sort="ffb" title="Fantasy Footballers rest-of-season position rank, averaged across analysts">FFB rank</th>` : "";
+  const poWk = S.poIdx.map(i => S.weeks[i]);
+  const head = `<thead><tr><th data-sort="m">#</th><th data-sort="name">Player</th><th>Team</th><th>Fantasy team</th><th class="r" data-sort="reg">Pts/wk</th><th class="r" data-sort="po">Playoffs</th>${ffbCol}<th>Playoff matchups (Wk ${poWk.join(", ")})</th></tr></thead>`;
+  const body = ps.slice(0, 250).map(p => `<tr class="${p.owner===S.focus?"mine":""}">
+      <td class="num">${posRank[p.id]||""}</td>
+      <td><span class="pos ${esc(p.pos)}" style="display:inline-block;width:2.6em;margin-right:6px">${esc(p.pos)}</span>${esc(p.name)}${p.inj&&p.inj!=="Questionable"?`<span class="inj">${esc(p.inj)}</span>`:""}</td>
+      <td>${esc(p.team||"FA")}</td><td>${p.owner?esc(teamName(p.owner)):"<span style='color:var(--muted)'>Free agent</span>"}</td>
+      <td class="r num">${perWeek(p).toFixed(1)}</td><td class="r num">${p.po.toFixed(1)}</td>
+      ${FFB?`<td class="r num">${p.ffb&&p.ffb.rank?p.pos+Math.round(p.ffb.rank):"—"}</td>`:""}
+      <td><span class="sched">${schedChips(p)}</span></td></tr>`).join("");
+  $("#rankTable").innerHTML = head + `<tbody>${body}</tbody>`;
+  $$("#rankTable th[data-sort]").forEach(th => th.onclick = () => {
+    const key = th.dataset.sort; S.sort = {key, dir: S.sort.key === key ? -S.sort.dir : (key === "name" ? 1 : -1)}; renderRankings();
+  });
+}
+
+function renderOutlook(){
+  const A = S.teamById[S.focus]; const base = S.base[A.rid];
+  const all = S.teams.map(t => S.base[t.rid]);
+  const median = Array.from({length:S.NW}, (_,i) => { const v = all.map(a => a[i]).sort((x,y)=>x-y); return v[Math.floor(v.length/2)]; });
+  const W = 680, H = 220, pad = 34, n = S.NW;
+  const mx = Math.max(...base, ...median) * 1.1 || 1;
+  const bw = (W - pad*2)/n;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Projected starting lineup points by week">`;
+  S.poIdx.forEach(i => { svg += `<rect x="${pad+i*bw}" y="10" width="${bw}" height="${H-40}" fill="var(--po)"></rect>`; });
+  [0,.5,1].forEach(f => { const y = H-30 - f*(H-50); svg += `<line x1="${pad}" x2="${W-pad}" y1="${y}" y2="${y}" stroke="var(--line)"></line><text x="${pad-6}" y="${y+4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${Math.round(mx*f)}</text>`; });
+  base.forEach((v,i) => { const h = v/mx*(H-50); svg += `<rect x="${pad+i*bw+bw*.18}" y="${H-30-h}" width="${bw*.64}" height="${h}" fill="var(--turf)" rx="2"><title>Week ${S.weeks[i]}: ${v.toFixed(1)} pts (league median ${median[i].toFixed(1)})</title></rect>`; });
+  svg += `<polyline fill="none" stroke="var(--accent)" stroke-width="2" points="${median.map((v,i)=>`${pad+i*bw+bw/2},${H-30-v/mx*(H-50)}`).join(" ")}"></polyline>`;
+  median.forEach((v,i) => { svg += `<circle cx="${pad+i*bw+bw/2}" cy="${H-30-v/mx*(H-50)}" r="3" fill="var(--accent)"></circle>`; });
+  S.weeks.forEach((w,i) => { svg += `<text x="${pad+i*bw+bw/2}" y="${H-12}" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono, monospace">${w}</text>`; });
+  svg += `</svg>`;
+
+  // position group strength vs league
+  const groups = ["QB","RB","WR","TE","DEF","K"].filter(g => S.slotOrder.some(s => ELIG[s].has(g)));
+  const gp = {};
+  for (const t of S.teams){
+    const g = {}; for (let i = 0; i < S.NW; i++){ const got = []; lineupWeek(t.ids, i, got); for (const id of got){ const p = S.P[id]; g[p.pos] = (g[p.pos]||0) + p.pts[i]; } }
+    for (const k in g) g[k] /= S.NW; gp[t.rid] = g;
+  }
+  const tiles = groups.map(g => {
+    const vals = S.teams.map(t => ({rid:t.rid, v:gp[t.rid][g]||0})).sort((a,b)=>b.v-a.v);
+    const rank = vals.findIndex(x => x.rid === A.rid) + 1;
+    const n = vals.length; const cls = rank <= Math.ceil(n/4) ? "strong" : rank > n - Math.ceil(n/4) ? "weak" : "";
+    return `<div class="st ${cls}"><div class="k">${g} starters</div><div class="v">${ordinal(rank)}<span style="font-size:14px;color:var(--muted)"> of ${n}</span></div><div class="s num">${(gp[A.rid][g]||0).toFixed(1)} pts/wk</div></div>`;
+  }).join("");
+
+  const starts = starterCounts(A.ids);
+  const roster = A.ids.map(id => S.P[id]).sort((a,b) => (b.m||0) - (a.m||0));
+  const rows = roster.map(p => `<tr>
+      <td><input type="checkbox" data-keep="${esc(p.id)}" ${S.untouch.has(p.id)?"checked":""} aria-label="Keep ${esc(p.name)} off the table"></td>
+      <td><span class="pos ${esc(p.pos)}" style="display:inline-block;width:2.6em;margin-right:6px">${esc(p.pos)}</span>${esc(p.name)}${p.inj?`<span class="inj">${esc(p.inj)}</span>`:""}${A.reserve.has(p.id)?` <small style="color:var(--muted)">IR slot</small>`:""}</td>
+      <td>${esc(p.team||"")}</td><td class="r num">${p.pts?perWeek(p).toFixed(1):"–"}</td><td class="r num">${p.po!=null?p.po.toFixed(1):"–"}</td>
+      <td class="r num">${starts[p.id]||0}/${S.NW}</td><td><span class="sched">${p.pts?schedChips(p):""}</span></td></tr>`).join("");
+  const total = metricArr(base, "reg").r, po = metricArr(base, "po").p;
+  const lgRank = S.teams.map(t => ({rid:t.rid, v:metricArr(S.base[t.rid], S.mode).m})).sort((a,b)=>b.v-a.v).findIndex(x=>x.rid===A.rid)+1;
+  $("#outlook").innerHTML = `
+    <div class="card"><h3>${esc(A.name)} · ${esc(A.rec)}</h3>
+      <p class="hint" style="margin-bottom:8px">Projected starting lineup points each week (bars) against the league median (line). Shaded weeks are your playoffs. Ranks <b>${ordinal(lgRank)}</b> of ${S.teams.length} on the current setting; ${(total/Math.max(1,S.regIdx.length)).toFixed(1)} pts/wk in the regular season and ${po.toFixed(1)} across the playoffs.</p>
+      <div class="chart">${svg}</div></div>
+    <div class="card"><h3>Where you're strong and thin</h3><div class="strength">${tiles}</div></div>
+    <div class="card"><h3>Roster</h3><p class="hint" style="margin-bottom:8px">Tick <b>Keep</b> to take a player off the table, then run Find trades again.</p>
+      <div class="tablewrap" style="border:0"><table class="grid"><thead><tr><th>Keep</th><th>Player</th><th>Team</th><th class="r">Pts/wk</th><th class="r">Playoffs</th><th class="r">Starts</th><th>Playoff matchups</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  $$("#outlook input[data-keep]").forEach(cb => cb.onchange = () => {
+    cb.checked ? S.untouch.add(cb.dataset.keep) : S.untouch.delete(cb.dataset.keep);
+    savePrefs();
+  });
+}
+const ordinal = n => n + (["th","st","nd","rd"][(n%100>10&&n%100<14)?0:(n%10<4?n%10:0)]||"th");
+
+function renderHow(){
+  const ffb = FFB ? `<li><b>Fantasy Footballers rest-of-season projections</b> (FootClan, captured ${esc(FFB.asOf)}): each analyst's stat line is rescored with your league's settings, then blended with Sleeper's weekly projections using the Projection source slider. ${S.ffbMatched||0} players matched by name.</li>
+     <li><b>Fantasy Footballers matchup ratings</b>: schedule-adjusted points above expected that each defense allows by position.</li>` :
+     `<li><b>Matchup strength</b>: average fantasy points (your scoring) each defense has allowed to each position this season, from Sleeper's weekly stats, shrunk toward average early in the year.</li>`;
+  $("#how").innerHTML = `
+    <h3>What feeds the numbers</h3>
+    <ul>
+      <li><b>Your league settings</b> from Sleeper: scoring, starting slots, roster size, playoff weeks and trade deadline.</li>
+      <li><b>Sleeper weekly projections</b> for Weeks ${S.cw}–${S.lastWeek}, scored with your league's exact scoring. Bye weeks count as zero.</li>
+      ${ffb}
+      <li><b>Weather</b>: Open-Meteo forecast for game day when a game is within two weeks and outdoors; after that, a small December penalty for cold, open-air stadiums. Roofed stadiums are left alone.</li>
+    </ul>
+    <h3>How a trade is scored</h3>
+    <p>For every week the app sets each team's best legal starting lineup before and after the trade. The difference in starter points is the trade's value to that team, so a bench player who never starts adds nothing. Ranking uses the setting you choose: regular season, playoffs only, or balanced (each playoff week counts double).</p>
+    <p>The chance the other side accepts blends how much the deal helps their lineup with whether the names they receive are worth more than the names they give, measured as points above a replacement-level player. A trade that only helps you is pushed down the list.</p>
+    <h3>Limits</h3>
+    <ul>
+      <li>Projections are estimates. Matchup and weather adjustments are modest on purpose, because projections already account for some of this.</li>
+      <li>Injured players on IR are counted as out for four weeks, then at 80%. Check real news before you send an offer.</li>
+      <li>Draft picks and IDP slots aren't included.</li>
+    </ul>`;
+}
+
+function renderFacts(){
+  const L = S.league, sc = S.sc, rp = L.roster_positions || [];
+  const fmt = sc.rec >= 1 ? "PPR" : sc.rec >= .5 ? "Half-PPR" : sc.rec > 0 ? `${sc.rec}-PPR` : "Standard";
+  const flex = rp.filter(x => x === "FLEX").length;
+  const facts = [`${S.teams.length} teams`, fmt, `${sc.pass_td||4}-pt pass TD`];
+  if (sc.bonus_rec_te) facts.push(`TE premium +${sc.bonus_rec_te}`);
+  if (rp.includes("SUPER_FLEX")) facts.push("Superflex");
+  if (flex) facts.push(`${flex} FLEX`);
+  facts.push(`Playoffs Wk ${S.poStart}–${S.lastWeek}`);
+  const td = L.settings.trade_deadline;
+  let warn = "";
+  if (td && td < 99){
+    const left = td - S.cw;
+    if (left < 0) warn = `<span class="fact warn">Trade deadline passed (Wk ${td})</span>`;
+    else facts.push(`Trade deadline Wk ${td} (${left === 0 ? "this week" : left + (left===1?" week":" weeks") + " left"})`);
+  }
+  const src = FFB ? `<span class="fact src">With Fantasy Footballers data · ${esc(FFB.asOf)}</span>` : "";
+  $("#foot").innerHTML = `<b>${esc(L.name)}</b> · ${L.season} · Week ${S.cw}. Data from Sleeper${FFB?", The Fantasy Footballers (FootClan)":""} and Open-Meteo. Projections are estimates, not guarantees.`;
+  S.factsHTML = `<span class="facts">${facts.map(f=>`<span class="fact">${esc(f)}</span>`).join("")}${warn}${src}</span>`;
+  const status = $("#status"); status.insertAdjacentHTML("afterend", "");
+  const old = document.getElementById("factsRow"); if (old) old.remove();
+  const row = document.createElement("div"); row.id = "factsRow"; row.style.marginBottom = "14px"; row.innerHTML = S.factsHTML;
+  status.after(row);
+  $("#poLabel").textContent = `Playoffs ${S.poStart}–${S.lastWeek}`;
+  $("#modeHint").textContent = `Balanced counts each playoff week (Wk ${S.poStart}–${S.lastWeek}) double.`;
+}
+
+function fillControls(){
+  const sel = $("#team");
+  sel.innerHTML = S.teams.map(t => `<option value="${t.rid}">${esc(t.name)}${t.manager&&t.manager!==t.name?" ("+esc(t.manager)+")":""}</option>`).join("");
+  if (!S.focus || !S.teamById[S.focus]) S.focus = S.teams[0].rid;
+  sel.value = S.focus;
+  $("#partnerFilter").innerHTML = `<option value="">Any partner</option>` + S.teams.map(t => `<option value="${t.rid}">${esc(t.name)}</option>`).join("");
+  $("#ownerFilter").innerHTML = `<option value="">Everyone</option><option value="__fa">Free agents</option>` + S.teams.map(t => `<option value="${t.rid}">${esc(t.name)}</option>`).join("");
+  $("#blendField").hidden = !FFB;
+  $("#sosHint").textContent = FFB ? "How hard to lean on Fantasy Footballers' matchup ratings." : "How hard to lean on each opponent's points allowed by position.";
+}
+
+function savePrefs(){
+  if (!S.league) return;
+  store.set("league:"+S.league.league_id, {focus:S.focus, keep:[...S.untouch]});
+}
+function restorePrefs(id){
+  const p = store.get("league:"+id) || {};
+  S.focus = p.focus || null; S.untouch = new Set(p.keep || []);
+}
+
+/* ---------------- wiring ---------------- */
+$("#loadForm").addEventListener("submit", e => { e.preventDefault(); const id = $("#leagueId").value.trim().replace(/\D/g,""); if (id) loadLeague(id); });
+$("#runBtn").addEventListener("click", runSearch);
+$("#team").addEventListener("change", e => { S.focus = +e.target.value; savePrefs(); runSearch(); });
+$("#blend").addEventListener("input", e => { const v = +e.target.value; $("#blendVal").textContent = `${100-v} / ${v}`; });
+$("#sos").addEventListener("input", e => { $("#sosVal").textContent = e.target.value + "%"; });
+["blend","sos"].forEach(id => $("#"+id).addEventListener("change", () => S.league && runSearch()));
+["wx","inj","longs","t11","t21","t12","t22","t3"].forEach(id => $("#"+id).addEventListener("change", () => S.league && runSearch()));
+$$('input[name="mode"]').forEach(r => r.addEventListener("change", () => S.league && runSearch()));
+$$(".filters [data-kind]").forEach(b => b.onclick = () => { S.kindFilter = b.dataset.kind; $$(".filters [data-kind]").forEach(x => x.setAttribute("aria-pressed", String(x===b))); renderTrades(); });
+$("#partnerFilter").addEventListener("change", renderTrades);
+$$("#posFilters [data-pos]").forEach(b => b.onclick = () => { S.rankPos = b.dataset.pos; $$("#posFilters [data-pos]").forEach(x => x.setAttribute("aria-pressed", String(x===b))); renderRankings(); });
+$("#ownerFilter").addEventListener("change", renderRankings);
+$$(".tabs [role=tab]").forEach(b => b.onclick = () => {
+  $$(".tabs [role=tab]").forEach(x => x.setAttribute("aria-selected", String(x===b)));
+  $$("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== b.dataset.tab);
+});
+
+(function init(){
+  if (FFB) { $("#edition").textContent = "Sleeper trade finder · Fantasy Footballers edition"; }
+  const q = new URLSearchParams(location.search).get("league");
+  const id = q || store.get("lastLeague") || (DEFAULT_LEAGUE.startsWith("/*") ? "" : DEFAULT_LEAGUE);
+  if (id){ $("#leagueId").value = id; loadLeague(id); }
+})();
+</script>
+</body>
+</html>
