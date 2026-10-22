@@ -1544,7 +1544,6 @@ $$(".tabs [role=tab]").forEach(b => b.onclick = () => {
   for (let w = 13; w <= 18; w++) $("#pPo").insertAdjacentHTML("beforeend", `<option value="${w}"${w===15?" selected":""}>Week ${w}</option>`);
   $("#pTd").insertAdjacentHTML("beforeend", `<option value="99">No deadline</option>`);
   for (let w = 6; w <= 14; w++) $("#pTd").insertAdjacentHTML("beforeend", `<option value="${w}"${w===11?" selected":""}>Week ${w}</option>`);
-  setPasteForm(store.get("pasteCfg"));
   const qp = new URLSearchParams(location.search);
   const h = location.hash.match(/^#p=([\w-]+)/);
   if (h){
@@ -1554,10 +1553,8 @@ $$(".tabs [role=tab]").forEach(b => b.onclick = () => {
   }
   if (qp.get("espn")){ setSource("espn"); $("#leagueId").value = qp.get("espn"); loadLeague({src:"espn", id:qp.get("espn")}); return; }
   if (qp.get("league")){ setSource("sleeper"); $("#leagueId").value = qp.get("league"); loadLeague({src:"sleeper", id:qp.get("league")}); return; }
-  const last = store.get("lastSpec");
-  if (last && last.src === "paste"){ const cfg = store.get("pasteCfg"); setSource("paste"); if (cfg){ $("#pastePanel").hidden = true; loadLeague({src:"paste", cfg}); } return; }
-  if (last && last.id){ setSource(last.src); $("#leagueId").value = last.id; loadLeague(last); return; }
-  const id = store.get("lastLeague") || (DEFAULT_LEAGUE.startsWith("/*") ? "" : DEFAULT_LEAGUE);
+  // the plain link always opens blank; only a share link (or a private copy's built-in league) loads one
+  const id = DEFAULT_LEAGUE.startsWith("/*") ? "" : DEFAULT_LEAGUE;
   setSource("sleeper");
   if (id){ $("#leagueId").value = id; loadLeague({src:"sleeper", id}); }
 })();
