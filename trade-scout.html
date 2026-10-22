@@ -799,8 +799,8 @@ async function loadLeague(spec){
     buildTeams();
     const nTeams = S.teams.filter(t => t.ids.length).length;
     if (nTeams < 2) throw new Error("Couldn't find players on at least two teams. Check that each team's players are listed one per line, with a blank line between teams.");
-    setStatus("Checking game-day weather…");
-    await loadWeather();
+    setStatus("Checking game-day weather and trade values…");
+    await Promise.all([loadWeather(), loadMarket()]);
     restorePrefs(league.league_id);
     fillControls();
     renderFacts();
@@ -1038,11 +1038,25 @@ function recompute(){
   const nT = S.teams.length || 12;
   for (const pos in byPos){ const a = byPos[pos].sort((x,y)=>y-x); const n = Math.round(nT*(starters[pos]||0)); S.repl[pos] = a[Math.min(n, a.length-1)] || 0; }
   for (const id in S.P){ const p = S.P[id]; p.val = Math.max(0, p.m - (S.repl[p.pos]||0)); }
+  // waiver wire: what a manager could start from free agents each week (2nd-best unowned player, so it's realistic)
+  S.fill = [];
+  const slotsFor = {};
+  for (const sl of S.slotOrder) for (const pos of ELIG[sl]) slotsFor[pos] = (slotsFor[pos]||0) + 1;
+  S.waiver = {};
+  for (const pos of POS_OK){
+    if (!slotsFor[pos]) continue;
+    const fa = Object.values(S.P).filter(p => p.pos === pos && !p.owner && p.pts);
+    const w = new Float64Array(NW);
+    for (let i = 0; i < NW; i++){ const v = fa.map(p => p.pts[i]).sort((x,y) => y-x); w[i] = v[1] ?? v[0] ?? 0; }
+    S.waiver[pos] = w;
+    for (let k = 0; k < Math.min(3, slotsFor[pos]); k++) S.fill.push({id:"FA:"+pos, pos, pts:w, fa:true});
+  }
   // team baselines
   S.base = {}; let tot = 0;
   for (const t of S.teams){ S.base[t.rid] = teamWeeks(t.ids); tot += metricArr(S.base[t.rid], o.mode).m; }
   S.gs = Math.max(6, (tot / Math.max(1,S.teams.length)) * .025);
   S.mode = o.mode;
+  S.wkEff = o.mode === "reg" ? S.regIdx.length : o.mode === "po" ? S.poIdx.length : S.regIdx.length + 2*S.poIdx.length;
 }
 const metricOf = (r, p, mode) => mode === "reg" ? r : mode === "po" ? p : r + 2*p;
 function metricArr(arr, mode, base){
@@ -1053,15 +1067,17 @@ function metricArr(arr, mode, base){
 }
 
 /* ---------------- lineups ---------------- */
+// best legal lineup for one week; empty or weak spots can be filled from waivers, like a real manager would
 function lineupWeek(ids, wi, collect){
   const arr = [];
   for (const id of ids){ const p = S.P[id]; if (p && p.pts && p.pts[wi] > 0) arr.push(p); }
+  for (const f of S.fill || []) if (f.pts[wi] > 0) arr.push(f);
   arr.sort((a,b) => b.pts[wi] - a.pts[wi]);
   const used = new Uint8Array(arr.length); let tot = 0;
   for (const slot of S.slotOrder){
     const el = ELIG[slot];
     for (let j = 0; j < arr.length; j++){
-      if (!used[j] && el.has(arr[j].pos)){ used[j] = 1; tot += arr[j].pts[wi]; if (collect) collect.push(arr[j].id); break; }
+      if (!used[j] && el.has(arr[j].pos)){ used[j] = 1; tot += arr[j].pts[wi]; if (collect && !arr[j].fa) collect.push(arr[j].id); break; }
     }
   }
   return tot;
@@ -1073,10 +1089,28 @@ function starterCounts(ids){
   return c;
 }
 
+/* ---------------- market value (FantasyCalc) ---------------- */
+async function loadMarket(){
+  S.mv = null;
+  try {
+    const qbs = S.slotOrder.includes("SUPER_FLEX") || S.slotOrder.filter(x => x === "QB").length > 1 ? 2 : 1;
+    const ppr = S.recW >= .75 ? 1 : S.recW >= .25 ? .5 : 0;
+    const n = clamp(S.teams.length, 8, 16);
+    const rows = await getJSON(`https://api.fantasycalc.com/values/current?isDynasty=false&numQbs=${qbs}&numTeams=${n}&ppr=${ppr}`);
+    const mv = {}; let top = 0;
+    for (const r of rows){ const id = r.player && r.player.sleeperId; if (id && S.P[id]){ mv[id] = r.redraftValue || r.value || 0; top = Math.max(top, mv[id]); } }
+    if (Object.keys(mv).length > 50){ S.mv = mv; S.mvScale = Math.max(400, top * .08); }
+  } catch(e){ console.warn("market values", e); }
+}
+const mval = id => (S.mv && S.mv[id]) || 0;
+// a package of players is worth less than its sum: two mid players don't buy a star
+function pkg(ids){ let s = 0; for (const id of ids) s += Math.pow(mval(id), 1.3); return Math.pow(s, 1/1.3); }
+
 /* ---------------- trade engine ---------------- */
 function candidates(t, n, isFocus){
-  return t.ids.filter(id => { const p = S.P[id]; return p && POS_OK.has(p.pos) && p.m > 0 && !(isFocus && S.untouch.has(id)); })
-    .sort((a,b) => (S.P[b].val - S.P[a].val) || (S.P[b].m - S.P[a].m)).slice(0, n);
+  const score = id => (S.P[id].val || 0) + (S.mv ? mval(id) / S.mvScale * S.gs : 0);
+  return t.ids.filter(id => { const p = S.P[id]; return p && POS_OK.has(p.pos) && (p.m > 0 || mval(id) > 0) && !(isFocus && S.untouch.has(id)); })
+    .sort((a,b) => score(b) - score(a)).slice(0, n);
 }
 function evalTrade(moves){
   const inv = new Map();
@@ -1092,7 +1126,7 @@ function evalTrade(moves){
     if (io.get.length > io.give.length){
       let active = ids.filter(id => !t.reserve.has(id)).length;
       while (active > S.maxRoster){
-        const pool = ids.filter(id => !io.get.includes(id) && !t.reserve.has(id)).sort((a,b) => (S.P[a].m||0) - (S.P[b].m||0));
+        const pool = ids.filter(id => !io.get.includes(id) && !t.reserve.has(id)).sort((a,b) => ((S.P[a].m||0) + mval(a)/50) - ((S.P[b].m||0) + mval(b)/50));
         if (!pool.length) break;
         drops.push(pool[0]); ids = ids.filter(id => id !== pool[0]); active--;
       }
@@ -1101,11 +1135,16 @@ function evalTrade(moves){
     const d = metricArr(wk, S.mode, S.base[rid]);
     const parity = io.get.reduce((s,id)=>s+(S.P[id].val||0),0) - io.give.reduce((s,id)=>s+(S.P[id].val||0),0)
                  - drops.reduce((s,id)=>s+(S.P[id].val||0),0);
-    out.push({rid, give:io.give, get:io.get, drops, ids, wk, d, parity});
+    const mkt = pkg(io.get) - pkg(io.give.concat(drops));
+    out.push({rid, give:io.give, get:io.get, drops, ids, wk, d, parity, mkt});
   }
   return out;
 }
-function acceptP(side){ return sig((side.d.m*1.1 + side.parity*.6)/S.gs + .15); }
+// will the other manager say yes? Mostly whether they get fair market value, plus whether it helps their lineup
+function acceptP(side){
+  if (S.mv) return sig(.6 * side.d.m / S.gs + 1.2 * side.mkt / S.mvScale + .1);
+  return sig((side.d.m*1.1 + side.parity*.6)/S.gs + .15);
+}
 
 function* pairs(a){ for (let i = 0; i < a.length; i++) for (let j = i+1; j < a.length; j++) yield [a[i], a[j]]; }
 
@@ -1114,8 +1153,8 @@ function search(){
   const A = S.teamById[S.focus]; if (!A) return [];
   const others = S.teams.filter(t => t.rid !== A.rid);
   const cand = {};
-  cand[A.rid] = candidates(A, 12, true);
-  for (const t of others) cand[t.rid] = candidates(t, 10, false);
+  cand[A.rid] = candidates(A, 14, true);
+  for (const t of others) cand[t.rid] = candidates(t, 12, false);
   // quick single-player add/remove values for every team, used to shortlist
   const add = {}, rem = {};
   const allC = new Set(Object.values(cand).flat());
@@ -1128,8 +1167,12 @@ function search(){
     }
   }
   const gs = S.gs, shortlist = [];
+  const minGain = Math.max(1, .6 * S.wkEff);          // at least ~0.6 points a week, or it isn't worth a trade
+  const sumV = ids => ids.reduce((s,id) => s + mval(id), 0);
+  const myMktOk = (getV, giveV) => !S.mv || getV - giveV >= -Math.max(400, .12 * giveV);
   const push = (moves, gA, others) => {
-    let k = gA; for (const g of others) k *= sig(g/gs + .15);
+    let k = gA;
+    for (const [g, mk] of others) k *= S.mv ? sig(.6*g/gs + 1.2*mk/S.mvScale + .1) : sig(g/gs + .15);
     shortlist.push({moves, key:k});
   };
   const cA = cand[A.rid];
@@ -1146,10 +1189,12 @@ function search(){
       for (const give of GA) for (const get of GB){
         let gA = 0, gB = 0;
         for (const id of get) gA += add[A.rid][id]; for (const id of give) gA += rem[A.rid][id];
-        if (gA <= 0) continue;
+        if (gA < minGain * .7) continue;
+        const vin = sumV(get), vout = sumV(give);
+        if (!myMktOk(vin, vout)) continue;
         for (const id of give) gB += add[B.rid][id]; for (const id of get) gB += rem[B.rid][id];
         if (gB < -2*gs) continue;
-        push([...give.map(pid => ({from:A.rid, to:B.rid, pid})), ...get.map(pid => ({from:B.rid, to:A.rid, pid}))], gA, [gB]);
+        push([...give.map(pid => ({from:A.rid, to:B.rid, pid})), ...get.map(pid => ({from:B.rid, to:A.rid, pid}))], gA, [[gB, vout - vin]]);
       }
     }
   }
@@ -1159,44 +1204,48 @@ function search(){
       if (B === C) continue;
       // A sends a to B, B sends b to C, C sends c to A
       for (const a of cA) for (const c of c3[C.rid]){
-        const gA = add[A.rid][c] + rem[A.rid][a]; if (gA <= 0) continue;
+        const gA = add[A.rid][c] + rem[A.rid][a]; if (gA < minGain * .7 || !myMktOk(mval(c), mval(a))) continue;
         for (const b of c3[B.rid]){
           const gB = add[B.rid][a] + rem[B.rid][b]; if (gB < -gs) continue;
           const gC = add[C.rid][b] + rem[C.rid][c]; if (gC < -gs) continue;
-          push([{from:A.rid,to:B.rid,pid:a},{from:B.rid,to:C.rid,pid:b},{from:C.rid,to:A.rid,pid:c}], gA*.92, [gB, gC]);
+          push([{from:A.rid,to:B.rid,pid:a},{from:B.rid,to:C.rid,pid:b},{from:C.rid,to:A.rid,pid:c}], gA*.92, [[gB, mval(a)-mval(b)], [gC, mval(b)-mval(c)]]);
         }
       }
     }
   }
   shortlist.sort((x,y) => y.key - x.key);
   // exact evaluation of the best candidates; keep 3-team deals in the mix
-  const two = shortlist.filter(s => s.moves.length < 3 || new Set(s.moves.flatMap(m=>[m.from,m.to])).size === 2).slice(0, 1600);
+  const two = shortlist.filter(s => new Set(s.moves.flatMap(m=>[m.from,m.to])).size === 2).slice(0, 2000);
   const three = shortlist.filter(s => new Set(s.moves.flatMap(m=>[m.from,m.to])).size === 3).slice(0, 400);
   const results = [];
+  const regN = Math.max(1, S.regIdx.length);
   for (const s of two.concat(three)){
     const sides = evalTrade(s.moves);
     const me = sides.find(x => x.rid === A.rid); const them = sides.filter(x => x.rid !== A.rid);
-    if (me.d.m < .5) continue;
+    // protect the user: a real gain, no quiet giveaway of trade value, and no big hit to either half of the season
+    if (me.d.m < minGain) continue;
+    if (S.mv && me.mkt < -Math.max(400, .12 * pkg(me.give))) continue;
+    if (o.mode === "bal" && (me.d.r < -.5 * regN || me.d.p < -2)) continue;
     const ps = them.map(acceptP); const pMin = Math.min(...ps);
     if (pMin < (o.longs ? .1 : .4)) continue;
     const teamsN = sides.length;
     const shape = teamsN === 3 ? "3-team" : `${me.give.length} for ${me.get.length}`;
     const cx = teamsN === 3 ? .9 : (me.give.length + me.get.length > 2 ? .97 : 1);
-    // deals that also help the other lineups rank higher
-    const mutual = them.every(s => s.d.m > 0) ? 1.15 : 1;
-    results.push({sides, me, them, ps, pMin, teamsN, shape, score: me.d.m * Math.pow(pMin, 1.5) * cx * mutual});
+    const mutual = them.every(s => s.d.m > 0) ? 1.1 : 1;
+    const valueBonus = S.mv ? .5 * gs * clamp(me.mkt / S.mvScale, -1, 2) : 0;
+    results.push({sides, me, them, ps, pMin, teamsN, shape, score: (me.d.m + valueBonus) * Math.pow(pMin, 1.5) * cx * mutual});
   }
   results.sort((a,b) => b.score - a.score);
-  // keep the list varied
-  const out = [], seenGet = {}, seenGive = {}, seenKey = new Set(), perPartner = {};
+  // keep the list varied: each player shows up at most twice, each partner at most three times
+  const out = [], seenKey = new Set(), uses = {}, perPartner = {};
   for (const r of results){
     const key = r.sides.map(s => s.rid+":"+[...s.give].sort().join(",")).sort().join("|");
     if (seenKey.has(key)) continue;
-    const g = r.me.get.slice().sort().join(","), v = r.me.give.slice().sort().join(",");
+    const players = r.sides.flatMap(s => s.give);
     const pk = r.them.map(s => s.rid).sort().join("+");
-    if ((seenGet[g]||0) >= 2 || (seenGive[v]||0) >= 3 || (perPartner[pk]||0) >= 5) continue;
-    seenKey.add(key); seenGet[g] = (seenGet[g]||0)+1; seenGive[v] = (seenGive[v]||0)+1; perPartner[pk] = (perPartner[pk]||0)+1;
-    out.push(r); if (out.length >= 40) break;
+    if (players.some(id => (uses[id]||0) >= 2) || (perPartner[pk]||0) >= 3) continue;
+    seenKey.add(key); players.forEach(id => uses[id] = (uses[id]||0) + 1); perPartner[pk] = (perPartner[pk]||0) + 1;
+    out.push(r); if (out.length >= 30) break;
   }
   return out;
 }
@@ -1295,13 +1344,14 @@ function renderTrades(){
           const from = s.get.map(id => r.sides.find(x => x.give.includes(id))).filter(Boolean).map(x => x.rid === S.focus ? "you" : teamName(x.rid));
           return `<div class="leg"><h4><b>${s.rid===S.focus?"You":esc(teamName(s.rid))}</b> get${s.rid===S.focus?"":"s"} · from ${esc(from.join(", "))}</h4><ul class="plist">${s.get.map(playerLi).join("")}</ul></div>`;
         }).join("");
-    const rows = [r.me, ...r.them].map((s,i) => `<tr class="${i===0?"me":""}"><td>${i===0?"You":esc(teamName(s.rid))}</td>${deltaCell(s.d.r/regN, true)}${deltaCell(s.d.p)}${i===0?"<td></td>":`<td class="num">${Math.round(r.ps[i-1]*100)}%</td>`}</tr>`).join("");
+    const mktCell = v => { const cls = v > 50 ? "up" : v < -50 ? "down" : ""; return `<td class="num ${cls}">${v>0?"+":v<0?"−":""}${Math.abs(Math.round(v)).toLocaleString()}</td>`; };
+    const rows = [r.me, ...r.them].map((s,i) => `<tr class="${i===0?"me":""}"><td>${i===0?"You":esc(teamName(s.rid))}</td>${deltaCell(s.d.r/regN, true)}${deltaCell(s.d.p)}${S.mv?mktCell(s.mkt):""}${i===0?"<td></td>":`<td class="num">${Math.round(r.ps[i-1]*100)}%</td>`}</tr>`).join("");
     const drops = r.sides.filter(s => s.drops.length).map(s => `${s.rid===S.focus?"You'd":esc(teamName(s.rid))+" would"} need to drop ${s.drops.map(id=>esc(S.P[id].name)).join(", ")}`).join(". ");
     const incoming = r.me.get.map(id => { const p = S.P[id]; return `<li><span class="pos ${esc(p.pos)}">${esc(p.pos)}</span><span class="pn">${esc(p.name)}</span><span class="sched">${schedChips(p)}</span></li>`; }).join("");
     return `<article class="trade">
       <header><span class="rank num">${k+1}</span><span class="kind">${esc(r.shape)}</span><span class="with">with <b>${r.them.map(s=>esc(teamName(s.rid))).join("</b> and <b>")}</b></span>${oddsBadge(r.pMin)}</header>
       <div class="legs">${legs}</div>
-      <table class="impact"><thead><tr><th>Team</th><th>Regular season</th><th>Playoffs total</th><th>Accepts</th></tr></thead><tbody>${rows}</tbody></table>
+      <table class="impact"><thead><tr><th>Team</th><th>Regular season</th><th>Playoffs total</th>${S.mv?`<th title="Change in FantasyCalc trade value, based on real trades in redraft leagues like yours">Trade value</th>`:""}<th>Accepts</th></tr></thead><tbody>${rows}</tbody></table>
       <p class="why">${whyText(r)}</p>
       ${drops?`<p class="drop">${drops}.</p>`:""}
       <details class="more"><summary>Week by week and playoff matchups</summary>
@@ -1319,19 +1369,21 @@ function renderRankings(){
   if (S.rankPos !== "ALL") ps = ps.filter(p => p.pos === S.rankPos);
   if (owner === "__fa") ps = ps.filter(p => !p.owner); else if (owner) ps = ps.filter(p => String(p.owner) === owner);
   const k = S.sort.key, dir = S.sort.dir;
-  const val = p => k === "name" ? p.name : k === "reg" ? perWeek(p) : k === "po" ? p.po : k === "ffb" ? -(p.ffb && p.ffb.rank || 999) : p.m;
+  const val = p => k === "name" ? p.name : k === "reg" ? perWeek(p) : k === "po" ? p.po : k === "ffb" ? -(p.ffb && p.ffb.rank || 999) : k === "mv" ? mval(p.id) : p.m;
   ps.sort((a,b) => { const x = val(a), y = val(b); return (typeof x === "string" ? x.localeCompare(y) : x - y) * dir; });
   const posRank = {};
   const rankOrder = Object.values(S.P).filter(p => p.pts).sort((a,b) => b.m - a.m);
   const cnt = {}; for (const p of rankOrder){ cnt[p.pos] = (cnt[p.pos]||0)+1; posRank[p.id] = p.pos + cnt[p.pos]; }
+  const mvCol = S.mv ? `<th class="r" data-sort="mv" title="FantasyCalc trade value, based on real trades">Trade value</th>` : "";
   const ffbCol = FFB ? `<th class="r" data-sort="ffb" title="Fantasy Footballers rest-of-season position rank, averaged across analysts">FFB rank</th>` : "";
   const poWk = S.poIdx.map(i => S.weeks[i]);
-  const head = `<thead><tr><th data-sort="m">#</th><th data-sort="name">Player</th><th>Team</th><th>Fantasy team</th><th class="r" data-sort="reg">Pts/wk</th><th class="r" data-sort="po">Playoffs</th>${ffbCol}<th>Playoff matchups (Wk ${poWk.join(", ")})</th></tr></thead>`;
+  const head = `<thead><tr><th data-sort="m">#</th><th data-sort="name">Player</th><th>Team</th><th>Fantasy team</th><th class="r" data-sort="reg">Pts/wk</th><th class="r" data-sort="po">Playoffs</th>${mvCol}${ffbCol}<th>Playoff matchups (Wk ${poWk.join(", ")})</th></tr></thead>`;
   const body = ps.slice(0, 250).map(p => `<tr class="${p.owner===S.focus?"mine":""}">
       <td class="num">${posRank[p.id]||""}</td>
       <td><span class="pos ${esc(p.pos)}" style="display:inline-block;width:2.6em;margin-right:6px">${esc(p.pos)}</span>${esc(p.name)}${p.inj&&p.inj!=="Questionable"?`<span class="inj">${esc(p.inj)}</span>`:""}</td>
       <td>${esc(p.team||"FA")}</td><td>${p.owner?esc(teamName(p.owner)):"<span style='color:var(--muted)'>Free agent</span>"}</td>
       <td class="r num">${perWeek(p).toFixed(1)}</td><td class="r num">${p.po.toFixed(1)}</td>
+      ${S.mv?`<td class="r num">${mval(p.id)?mval(p.id).toLocaleString():"—"}</td>`:""}
       ${FFB?`<td class="r num">${p.ffb&&p.ffb.rank?p.pos+Math.round(p.ffb.rank):"—"}</td>`:""}
       <td><span class="sched">${schedChips(p)}</span></td></tr>`).join("");
   $("#rankTable").innerHTML = head + `<tbody>${body}</tbody>`;
@@ -1408,8 +1460,9 @@ function renderHow(){
       <li><b>Weather</b>: Open-Meteo forecast for game day when a game is within two weeks and outdoors; after that, a small December penalty for cold, open-air stadiums. Roofed stadiums are left alone.</li>
     </ul>
     <h3>How a trade is scored</h3>
-    <p>For every week the app sets each team's best legal starting lineup before and after the trade. The difference in starter points is the trade's value to that team, so a bench player who never starts adds nothing. Ranking uses the setting you choose: regular season, playoffs only, or balanced (each playoff week counts double).</p>
-    <p>The chance the other side accepts blends how much the deal helps their lineup with whether the names they receive are worth more than the names they give, measured as points above a replacement-level player. A trade that only helps you is pushed down the list.</p>
+    <p>For every week the app sets each team's best legal starting lineup before and after the trade. If a team has a hole (a bye week, an injury), it fills it with a realistic waiver-wire pickup, so a backup who only covers a bye isn't treated as a big upgrade. The difference in starter points is the trade's value to that team. Ranking uses the setting you choose: regular season, playoffs only, or balanced (each playoff week counts double).</p>
+    <p>${S.mv ? "Player trade values come from FantasyCalc, which tracks real trades in redraft leagues with your league's size, PPR and quarterback settings. A package of lesser players is worth less than its total, so two mid players don't buy a star. The chance the other side accepts is mostly whether they get fair trade value back, plus how much it helps their lineup." : "The chance the other side accepts blends how much the deal helps their lineup with whether the names they receive are worth more than the names they give, measured as points above a replacement-level player."}</p>
+    <p>To protect you, a trade only shows if it adds a meaningful amount to your lineup (about half a point a week or more)${S.mv ? ", doesn't give away noticeably more trade value than you get back" : ""}, and, on Balanced, doesn't sink your regular season to help the playoffs. Each player appears in at most two suggestions and each partner in at most three, so you see a real range of options.</p>
     <h3>Limits</h3>
     <ul>
       <li>Projections are estimates. Matchup and weather adjustments are modest on purpose, because projections already account for some of this.</li>
@@ -1435,7 +1488,8 @@ function renderFacts(){
     else facts.push(`Trade deadline Wk ${td} (${left === 0 ? "this week" : left + (left===1?" week":" weeks") + " left"})`);
   }
   const src = FFB ? `<span class="fact src">With Fantasy Footballers data · ${esc(FFB.asOf)}</span>` : "";
-  $("#foot").innerHTML = `<b>${esc(L.name)}</b> · ${L.season} · Week ${S.cw}. League from ${S.league.source === "paste" ? "your copied rosters" : SRC_NAME[S.league.source]}. Projections from Sleeper${FFB?" and The Fantasy Footballers (FootClan)":""}; weather from Open-Meteo. Projections are estimates, not guarantees.`;
+  if (S.mv) facts.push("Trade values: FantasyCalc");
+  $("#foot").innerHTML = `<b>${esc(L.name)}</b> · ${L.season} · Week ${S.cw}. League from ${S.league.source === "paste" ? "your copied rosters" : SRC_NAME[S.league.source]}. Projections from Sleeper${FFB?" and The Fantasy Footballers (FootClan)":""}; weather from Open-Meteo${S.mv?"; trade values from FantasyCalc":""}. Projections are estimates, not guarantees.`;
   const tools = `<button class="fact share" type="button" id="shareBtn">Copy link for your league</button>` + (L.source === "paste" ? `<button class="fact" type="button" id="editBtn">Edit rosters</button>` : "");
   S.factsHTML = `<span class="facts">${facts.map(f=>`<span class="fact">${esc(f)}</span>`).join("")}${warn}${src}${tools}</span>`
     + (S.unmatched.length ? `<p class="unmatched">Couldn't match ${S.unmatched.length} name${S.unmatched.length===1?"":"s"}, so ${S.unmatched.length===1?"it's":"they're"} left out: ${S.unmatched.slice(0,12).map(esc).join(", ")}${S.unmatched.length>12?"…":""}. Check the spelling${L.source==="paste"?" under Edit rosters":""}.</p>` : "");
