@@ -800,7 +800,7 @@ async function loadLeague(spec){
     const nTeams = S.teams.filter(t => t.ids.length).length;
     if (nTeams < 2) throw new Error("Couldn't find players on at least two teams. Check that each team's players are listed one per line, with a blank line between teams.");
     setStatus("Checking game-day weather and trade values…");
-    await Promise.all([loadWeather(), loadMarket()]);
+    await Promise.all([loadWeather(), loadMarket(), loadESPNProj()]);
     restorePrefs(league.league_id);
     fillControls();
     renderFacts();
@@ -1011,9 +1011,16 @@ function recompute(){
   for (const id in S.P){
     const p = S.P[id];
     // blend Sleeper weekly shape with the expert rest-of-season total
+    // week-by-week consensus of the projection sources we have (Sleeper, plus ESPN when it lists the player)
+    const base = new Float64Array(NF);
+    for (let i = 0; i < NF; i++){
+      const r = p.rows[i]; if (!r) continue;
+      const e = p.espn ? p.espn[i] : NaN;
+      base[i] = Number.isFinite(e) && e >= 0 ? (r.raw + e) / 2 : r.raw;
+    }
     let scale = 1;
     if (p.ffb && o.blend > 0){
-      let sl = 0; for (let i = 0; i < NF; i++) sl += p.rows[i] ? p.rows[i].raw : 0;
+      let sl = 0; for (let i = 0; i < NF; i++) sl += base[i];
       if (sl > 5) scale = clamp((o.blend*p.ffb.pts + (1-o.blend)*sl)/sl, .4, 2.2);
     }
     const pts = new Float64Array(NW);
@@ -1023,7 +1030,7 @@ function recompute(){
       if (o.sos > 0) f *= 1 + (sosRaw(r.opp, p.pos) - 1)*o.sos;
       if (o.wx) f *= wxFactor(p.pos, wxFor(S.weeks[i], r.team || p.team));
       if (o.inj) f *= injFactor(p.inj, i);
-      pts[i] = r.raw * f;
+      pts[i] = base[i] * f;
     }
     p.pts = pts;
     let reg = 0, po = 0; for (const i of S.regIdx) reg += pts[i]; for (const i of S.poIdx) po += pts[i];
@@ -1057,6 +1064,7 @@ function recompute(){
   S.gs = Math.max(6, (tot / Math.max(1,S.teams.length)) * .025);
   S.mode = o.mode;
   S.wkEff = o.mode === "reg" ? S.regIdx.length : o.mode === "po" ? S.poIdx.length : S.regIdx.length + 2*S.poIdx.length;
+  buildMarket();
 }
 const metricOf = (r, p, mode) => mode === "reg" ? r : mode === "po" ? p : r + 2*p;
 function metricArr(arr, mode, base){
@@ -1068,7 +1076,7 @@ function metricArr(arr, mode, base){
 
 /* ---------------- lineups ---------------- */
 // best legal lineup for one week; empty or weak spots can be filled from waivers, like a real manager would
-function lineupWeek(ids, wi, collect){
+function lineupWeek(ids, wi, collect, slots){
   const arr = [];
   for (const id of ids){ const p = S.P[id]; if (p && p.pts && p.pts[wi] > 0) arr.push(p); }
   for (const f of S.fill || []) if (f.pts[wi] > 0) arr.push(f);
@@ -1077,7 +1085,7 @@ function lineupWeek(ids, wi, collect){
   for (const slot of S.slotOrder){
     const el = ELIG[slot];
     for (let j = 0; j < arr.length; j++){
-      if (!used[j] && el.has(arr[j].pos)){ used[j] = 1; tot += arr[j].pts[wi]; if (collect && !arr[j].fa) collect.push(arr[j].id); break; }
+      if (!used[j] && el.has(arr[j].pos)){ used[j] = 1; tot += arr[j].pts[wi]; if (collect && !arr[j].fa){ collect.push(arr[j].id); if (slots) slots.push(slot); } break; }
     }
   }
   return tot;
@@ -1091,16 +1099,112 @@ function starterCounts(ids){
 
 /* ---------------- market value (FantasyCalc) ---------------- */
 async function loadMarket(){
-  S.mv = null;
+  S.mk = {fc:null, fcCurve:null, fp:null};
+  const qbs = S.slotOrder.includes("SUPER_FLEX") || S.slotOrder.filter(x => x === "QB").length > 1 ? 2 : 1;
+  S.sf = qbs === 2;
+  const ppr = S.recW >= .75 ? 1 : S.recW >= .25 ? .5 : 0;
+  const n = clamp(S.teams.length, 8, 16);
+  await Promise.all([
+    // FantasyCalc: values from real trades in redraft leagues with these settings
+    getJSON(`https://api.fantasycalc.com/values/current?isDynasty=false&numQbs=${qbs}&numTeams=${n}&ppr=${ppr}`).then(rows => {
+      const fc = {}; const curve = [];
+      for (const r of rows){ const v = r.redraftValue || r.value || 0; curve.push(v); const id = r.player && r.player.sleeperId; if (id && S.P[id]) fc[id] = v; }
+      if (Object.keys(fc).length > 50){ S.mk.fc = fc; S.mk.fcCurve = curve.sort((x,y) => y-x); }
+    }).catch(e => console.warn("FantasyCalc", e)),
+    // FantasyPros expert consensus, rest-of-season overall ranks (public mirror kept by DynastyProcess)
+    fetch("https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_fpecr_latest.csv").then(r => r.ok ? r.text() : Promise.reject(r.status)).then(txt => {
+      const rows = parseCSV(txt); const h = rows[0]; const ix = k => h.indexOf(k);
+      const fp = {};
+      for (const r of rows.slice(1)){
+        if (r[ix("page_type")] !== "redraft-overall") continue;
+        const pos = String(r[ix("pos")] || "").replace(/\d+$/,"");
+        if (!["QB","RB","WR","TE"].includes(pos)) continue;
+        const pl = matchRef({name:r[ix("player")], pos, team:normTeam(r[ix("team")])});
+        const ecr = parseFloat(r[ix("ecr")]);
+        if (pl && Number.isFinite(ecr)) fp[pl.id] = ecr;
+      }
+      if (Object.keys(fp).length > 50){ S.mk.fp = fp; S.mk.fpDate = rows[1] ? rows[1][ix("scrape_date")] : ""; }
+    }).catch(e => console.warn("FantasyPros", e))
+  ]);
+}
+function parseCSV(txt){
+  const out = []; let row = [], cur = "", q = false;
+  for (let i = 0; i < txt.length; i++){
+    const c = txt[i];
+    if (q){ if (c === '"'){ if (txt[i+1] === '"'){ cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === ","){ row.push(cur); cur = ""; }
+    else if (c === "\n"){ row.push(cur); out.push(row); row = []; cur = ""; }
+    else if (c !== "\r") cur += c;
+  }
+  if (cur || row.length){ row.push(cur); out.push(row); }
+  return out;
+}
+// ESPN's own week-by-week projections, rescored with this league's scoring
+const ESPN_RAW = {3:"pass_yd",4:"pass_td",19:"pass_2pt",20:"pass_int",24:"rush_yd",25:"rush_td",26:"rush_2pt",42:"rec_yd",43:"rec_td",44:"rec_2pt",53:"rec",72:"fum_lost"};
+async function loadESPNProj(){
+  S.espnN = 0;
   try {
-    const qbs = S.slotOrder.includes("SUPER_FLEX") || S.slotOrder.filter(x => x === "QB").length > 1 ? 2 : 1;
-    const ppr = S.recW >= .75 ? 1 : S.recW >= .25 ? .5 : 0;
-    const n = clamp(S.teams.length, 8, 16);
-    const rows = await getJSON(`https://api.fantasycalc.com/values/current?isDynasty=false&numQbs=${qbs}&numTeams=${n}&ppr=${ppr}`);
-    const mv = {}; let top = 0;
-    for (const r of rows){ const id = r.player && r.player.sleeperId; if (id && S.P[id]){ mv[id] = r.redraftValue || r.value || 0; top = Math.max(top, mv[id]); } }
-    if (Object.keys(mv).length > 50){ S.mv = mv; S.mvScale = Math.max(400, top * .08); }
-  } catch(e){ console.warn("market values", e); }
+    const ids = S.fullWeeks.map(w => "11" + S.league.season + w);
+    const flt = {players:{limit:400, sortPercOwned:{sortPriority:1, sortAsc:false}, filterStatsForTopScoringPeriodIds:{value:1, additionalValue:ids}}};
+    const r = await fetch(`https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${S.league.season}/segments/0/leaguedefaults/3?view=kona_player_info`, {headers:{"X-Fantasy-Filter": JSON.stringify(flt)}});
+    if (!r.ok) return;
+    const d = await r.json();
+    const sc = S.sc;
+    for (const e of d.players || []){
+      const pl = e.player || {}; const pos = ESPN_POS[pl.defaultPositionId];
+      if (!["QB","RB","WR","TE"].includes(pos)) continue;
+      const p = matchRef({name:pl.fullName, pos, team:ESPN_TEAM[pl.proTeamId]}); if (!p) continue;
+      const arr = new Float64Array(S.fullWeeks.length).fill(NaN); let got = 0;
+      for (const st of pl.stats || []){
+        if (st.statSourceId !== 1 || st.statSplitTypeId !== 1) continue;
+        const wi = S.fullWeeks.indexOf(st.scoringPeriodId); if (wi < 0 || String(st.seasonId) !== String(S.league.season)) continue;
+        let pts = 0; const raw = st.stats || {};
+        for (const k in ESPN_RAW) if (raw[k]) pts += raw[k] * (sc[ESPN_RAW[k]] || 0);
+        const bonus = {TE:"bonus_rec_te",RB:"bonus_rec_rb",WR:"bonus_rec_wr"}[pos];
+        if (bonus && raw[53]) pts += raw[53] * (sc[bonus] || 0);
+        arr[wi] = pts; got++;
+      }
+      if (got){ p.espn = arr; S.espnN++; }
+    }
+  } catch(e){ console.warn("ESPN projections", e); }
+}
+// consensus trade value: average each player's rank across FantasyCalc, FantasyPros and our own projections,
+// then turn that rank back into a value on FantasyCalc's scale
+function buildMarket(){
+  S.mv = null;
+  if (!S.mk || (!S.mk.fc && !S.mk.fp)) return;
+  const players = Object.values(S.P).filter(p => ["QB","RB","WR","TE"].includes(p.pos) && p.pts);
+  // projection rank: rest-of-season points over a replacement-level starter
+  const tot = p => p.reg + p.po;
+  const byPos = {};
+  for (const p of players) (byPos[p.pos] ||= []).push(tot(p));
+  const repl = {}; const nT = S.teams.length || 12;
+  const need = {QB: S.sf ? 2 : 1, RB: 2.4, WR: 2.9, TE: 1.1};
+  for (const pos in byPos){ const a = byPos[pos].sort((x,y) => y-x); repl[pos] = a[Math.min(a.length-1, Math.round(nT*need[pos]))] || 0; }
+  const projOrder = players.map(p => [p.id, tot(p) - repl[p.pos]]).sort((a,b) => b[1]-a[1]);
+  const projRank = {}; projOrder.forEach(([id], i) => projRank[id] = i + 1);
+  const fcRank = {};
+  if (S.mk.fc) Object.entries(S.mk.fc).sort((a,b) => b[1]-a[1]).forEach(([id], i) => fcRank[id] = i + 1);
+  const fpN = S.mk.fp ? Object.keys(S.mk.fp).length : 0, fcN = Object.keys(fcRank).length;
+  const curve = S.mk.fcCurve || null;
+  const valAt = r => {
+    if (curve){ const k = r - 1; if (k < curve.length - 1){ const lo = Math.floor(k), f = k - lo; return curve[lo]*(1-f) + curve[lo+1]*f; } return curve[curve.length-1] * Math.exp(-(k - curve.length + 1) / 30); }
+    return 10000 * Math.exp(-(r - 1) / 55);
+  };
+  const mv = {}; S.mvParts = {};
+  for (const p of players){
+    const parts = [];
+    if (S.mk.fc) parts.push(["FantasyCalc", fcRank[p.id] || fcN + 25]);
+    if (S.mk.fp && !(S.sf && p.pos === "QB")) parts.push(["FantasyPros", S.mk.fp[p.id] || fpN + 25]);
+    parts.push(["Projections", projRank[p.id] || players.length]);
+    const rk = parts.reduce((s,x) => s + x[1], 0) / parts.length;
+    if (rk > 320) continue;
+    mv[p.id] = Math.round(valAt(rk));
+    S.mvParts[p.id] = parts;
+  }
+  S.mv = mv;
+  S.mvScale = Math.max(400, valAt(1) * .08);
 }
 const mval = id => (S.mv && S.mv[id]) || 0;
 // a package of players is worth less than its sum: two mid players don't buy a star
@@ -1146,6 +1250,11 @@ function acceptP(side){
   return sig((side.d.m*1.1 + side.parity*.6)/S.gs + .15);
 }
 
+function incomingStarts(me, win, need){
+  const c = {};
+  for (const i of win){ const got = []; lineupWeek(me.ids, i, got); for (const id of got) if (me.get.includes(id)) c[id] = (c[id]||0) + 1; }
+  return me.get.every(id => (c[id]||0) >= need);
+}
 function* pairs(a){ for (let i = 0; i < a.length; i++) for (let j = i+1; j < a.length; j++) yield [a[i], a[j]]; }
 
 function search(){
@@ -1219,6 +1328,8 @@ function search(){
   const three = shortlist.filter(s => new Set(s.moves.flatMap(m=>[m.from,m.to])).size === 3).slice(0, 400);
   const results = [];
   const regN = Math.max(1, S.regIdx.length);
+  const win = o.mode === "reg" ? S.regIdx : o.mode === "po" ? S.poIdx : S.weeks.map((_, i) => i);
+  const need = Math.max(1, Math.ceil(.45 * win.length));
   for (const s of two.concat(three)){
     const sides = evalTrade(s.moves);
     const me = sides.find(x => x.rid === A.rid); const them = sides.filter(x => x.rid !== A.rid);
@@ -1226,6 +1337,8 @@ function search(){
     if (me.d.m < minGain) continue;
     if (S.mv && me.mkt < -Math.max(400, .12 * pkg(me.give))) continue;
     if (o.mode === "bal" && (me.d.r < -.5 * regN || me.d.p < -2)) continue;
+    // no bench pieces: everyone you get has to start for you in most of the weeks that count
+    if (!incomingStarts(me, win, need)) continue;
     const ps = them.map(acceptP); const pMin = Math.min(...ps);
     if (pMin < (o.longs ? .1 : .4)) continue;
     const teamsN = sides.length;
@@ -1287,7 +1400,27 @@ function whyText(r){
   const A = S.teamById[S.focus];
   const before = starterCounts(A.ids), after = starterCounts(r.me.ids);
   const n = S.NW; const bits = [];
-  for (const id of r.me.get){ bits.push(`${esc(S.P[id].name)} starts ${after[id]||0} of ${n} weeks for you`); }
+  // where each incoming player would play, and who he'd push to the bench
+  const info = {};
+  for (let i = 0; i < n; i++){
+    const b = [], a = [], aSl = [];
+    lineupWeek(A.ids, i, b); lineupWeek(r.me.ids, i, a, aSl);
+    const benched = b.filter(id => !a.includes(id) && !r.me.give.includes(id));
+    a.forEach((id, k) => {
+      if (!r.me.get.includes(id)) return;
+      const x = info[id] ||= {slots:{}, over:{}};
+      const sl = aSl[k] === "FLEX" || aSl[k] === "WRRB_FLEX" || aSl[k] === "REC_FLEX" ? "FLEX" : aSl[k] === "SUPER_FLEX" ? "Superflex" : aSl[k];
+      x.slots[sl] = (x.slots[sl]||0) + 1;
+      const same = benched.find(o => S.P[o].pos === S.P[id].pos) || benched[0];
+      if (same) x.over[same] = (x.over[same]||0) + 1;
+    });
+  }
+  for (const id of r.me.get){
+    const x = info[id] || {slots:{}, over:{}};
+    const sl = Object.entries(x.slots).sort((a,b) => b[1]-a[1]).map(e => e[0]).join("/");
+    const ov = Object.entries(x.over).sort((a,b) => b[1]-a[1])[0];
+    bits.push(`${esc(S.P[id].name)} starts ${after[id]||0} of ${n} weeks for you${sl ? ` at ${sl}` : ""}${ov ? `, mostly in place of ${esc(S.P[ov[0]].name)}` : ""}`);
+  }
   for (const id of r.me.give){ const c = before[id]||0; bits.push(c <= n/2 ? `${esc(S.P[id].name)} only starts ${c} of ${n} weeks now` : `you lose ${esc(S.P[id].name)} (${c} of ${n} starts)`); }
   const themBits = r.them.map(s => {
     const T = S.teamById[s.rid]; const aft = starterCounts(s.ids);
@@ -1351,7 +1484,7 @@ function renderTrades(){
     return `<article class="trade">
       <header><span class="rank num">${k+1}</span><span class="kind">${esc(r.shape)}</span><span class="with">with <b>${r.them.map(s=>esc(teamName(s.rid))).join("</b> and <b>")}</b></span>${oddsBadge(r.pMin)}</header>
       <div class="legs">${legs}</div>
-      <table class="impact"><thead><tr><th>Team</th><th>Regular season</th><th>Playoffs total</th>${S.mv?`<th title="Change in FantasyCalc trade value, based on real trades in redraft leagues like yours">Trade value</th>`:""}<th>Accepts</th></tr></thead><tbody>${rows}</tbody></table>
+      <table class="impact"><thead><tr><th>Team</th><th>Regular season</th><th>Playoffs total</th>${S.mv?`<th title="Change in consensus trade value: FantasyCalc (real trades), FantasyPros (experts) and projections">Trade value</th>`:""}<th>Accepts</th></tr></thead><tbody>${rows}</tbody></table>
       <p class="why">${whyText(r)}</p>
       ${drops?`<p class="drop">${drops}.</p>`:""}
       <details class="more"><summary>Week by week and playoff matchups</summary>
@@ -1374,7 +1507,7 @@ function renderRankings(){
   const posRank = {};
   const rankOrder = Object.values(S.P).filter(p => p.pts).sort((a,b) => b.m - a.m);
   const cnt = {}; for (const p of rankOrder){ cnt[p.pos] = (cnt[p.pos]||0)+1; posRank[p.id] = p.pos + cnt[p.pos]; }
-  const mvCol = S.mv ? `<th class="r" data-sort="mv" title="FantasyCalc trade value, based on real trades">Trade value</th>` : "";
+  const mvCol = S.mv ? `<th class="r" data-sort="mv" title="Consensus of FantasyCalc (real trades), FantasyPros (experts) and projections">Trade value</th>` : "";
   const ffbCol = FFB ? `<th class="r" data-sort="ffb" title="Fantasy Footballers rest-of-season position rank, averaged across analysts">FFB rank</th>` : "";
   const poWk = S.poIdx.map(i => S.weeks[i]);
   const head = `<thead><tr><th data-sort="m">#</th><th data-sort="name">Player</th><th>Team</th><th>Fantasy team</th><th class="r" data-sort="reg">Pts/wk</th><th class="r" data-sort="po">Playoffs</th>${mvCol}${ffbCol}<th>Playoff matchups (Wk ${poWk.join(", ")})</th></tr></thead>`;
@@ -1383,7 +1516,7 @@ function renderRankings(){
       <td><span class="pos ${esc(p.pos)}" style="display:inline-block;width:2.6em;margin-right:6px">${esc(p.pos)}</span>${esc(p.name)}${p.inj&&p.inj!=="Questionable"?`<span class="inj">${esc(p.inj)}</span>`:""}</td>
       <td>${esc(p.team||"FA")}</td><td>${p.owner?esc(teamName(p.owner)):"<span style='color:var(--muted)'>Free agent</span>"}</td>
       <td class="r num">${perWeek(p).toFixed(1)}</td><td class="r num">${p.po.toFixed(1)}</td>
-      ${S.mv?`<td class="r num">${mval(p.id)?mval(p.id).toLocaleString():"—"}</td>`:""}
+      ${S.mv?`<td class="r num" title="${esc((S.mvParts[p.id]||[]).map(x => x[0] + " rank " + Math.round(x[1])).join(" · "))}">${mval(p.id)?mval(p.id).toLocaleString():"—"}</td>`:""}
       ${FFB?`<td class="r num">${p.ffb&&p.ffb.rank?p.pos+Math.round(p.ffb.rank):"—"}</td>`:""}
       <td><span class="sched">${schedChips(p)}</span></td></tr>`).join("");
   $("#rankTable").innerHTML = head + `<tbody>${body}</tbody>`;
@@ -1461,8 +1594,9 @@ function renderHow(){
     </ul>
     <h3>How a trade is scored</h3>
     <p>For every week the app sets each team's best legal starting lineup before and after the trade. If a team has a hole (a bye week, an injury), it fills it with a realistic waiver-wire pickup, so a backup who only covers a bye isn't treated as a big upgrade. The difference in starter points is the trade's value to that team. Ranking uses the setting you choose: regular season, playoffs only, or balanced (each playoff week counts double).</p>
-    <p>${S.mv ? "Player trade values come from FantasyCalc, which tracks real trades in redraft leagues with your league's size, PPR and quarterback settings. A package of lesser players is worth less than its total, so two mid players don't buy a star. The chance the other side accepts is mostly whether they get fair trade value back, plus how much it helps their lineup." : "The chance the other side accepts blends how much the deal helps their lineup with whether the names they receive are worth more than the names they give, measured as points above a replacement-level player."}</p>
-    <p>To protect you, a trade only shows if it adds a meaningful amount to your lineup (about half a point a week or more)${S.mv ? ", doesn't give away noticeably more trade value than you get back" : ""}, and, on Balanced, doesn't sink your regular season to help the playoffs. Each player appears in at most two suggestions and each partner in at most three, so you see a real range of options.</p>
+    <p>Weekly projections are the average of Sleeper's and ESPN's projections for each week (when ESPN lists the player), scored with your league's exact settings.</p>
+    <p>${S.mv ? "Trade values are a consensus: each player's rank from FantasyCalc (real trades in redraft leagues with your size, PPR and quarterback settings), FantasyPros (expert rest-of-season rankings) and these projections is averaged, then converted to one value scale. A package of lesser players is worth less than its total, so two mid players don't buy a star. The chance the other side accepts is mostly whether they get fair trade value back, plus how much it helps their lineup." : "The chance the other side accepts blends how much the deal helps their lineup with whether the names they receive are worth more than the names they give, measured as points above a replacement-level player."}</p>
+    <p>To protect you, a trade only shows if it adds a meaningful amount to your lineup (about half a point a week or more)${S.mv ? ", doesn't give away noticeably more trade value than you get back" : ""}, on Balanced, doesn't sink your regular season to help the playoffs, and only brings in players who would start for you in most of the weeks that count. A player who'd sit behind someone you already have won't be suggested. Each player appears in at most two suggestions and each partner in at most three, so you see a real range of options.</p>
     <h3>Limits</h3>
     <ul>
       <li>Projections are estimates. Matchup and weather adjustments are modest on purpose, because projections already account for some of this.</li>
@@ -1488,8 +1622,11 @@ function renderFacts(){
     else facts.push(`Trade deadline Wk ${td} (${left === 0 ? "this week" : left + (left===1?" week":" weeks") + " left"})`);
   }
   const src = FFB ? `<span class="fact src">With Fantasy Footballers data · ${esc(FFB.asOf)}</span>` : "";
-  if (S.mv) facts.push("Trade values: FantasyCalc");
-  $("#foot").innerHTML = `<b>${esc(L.name)}</b> · ${L.season} · Week ${S.cw}. League from ${S.league.source === "paste" ? "your copied rosters" : SRC_NAME[S.league.source]}. Projections from Sleeper${FFB?" and The Fantasy Footballers (FootClan)":""}; weather from Open-Meteo${S.mv?"; trade values from FantasyCalc":""}. Projections are estimates, not guarantees.`;
+  const projSrc = ["Sleeper"].concat(S.espnN ? ["ESPN"] : [], FFB ? ["Fantasy Footballers"] : []);
+  const valSrc = S.mk ? [S.mk.fc ? "FantasyCalc" : null, S.mk.fp ? "FantasyPros" : null].filter(Boolean) : [];
+  facts.push("Projections: " + projSrc.join(" + "));
+  if (S.mv) facts.push("Trade values: " + valSrc.concat("projections").join(" + "));
+  $("#foot").innerHTML = `<b>${esc(L.name)}</b> · ${L.season} · Week ${S.cw}. League from ${S.league.source === "paste" ? "your copied rosters" : SRC_NAME[S.league.source]}. Projections from ${projSrc.join(", ")}; weather from Open-Meteo${S.mv ? "; trade values from " + valSrc.join(" and ") + " blended with projections" : ""}. Projections are estimates, not guarantees.`;
   const tools = `<button class="fact share" type="button" id="shareBtn">Copy link for your league</button>` + (L.source === "paste" ? `<button class="fact" type="button" id="editBtn">Edit rosters</button>` : "");
   S.factsHTML = `<span class="facts">${facts.map(f=>`<span class="fact">${esc(f)}</span>`).join("")}${warn}${src}${tools}</span>`
     + (S.unmatched.length ? `<p class="unmatched">Couldn't match ${S.unmatched.length} name${S.unmatched.length===1?"":"s"}, so ${S.unmatched.length===1?"it's":"they're"} left out: ${S.unmatched.slice(0,12).map(esc).join(", ")}${S.unmatched.length>12?"…":""}. Check the spelling${L.source==="paste"?" under Edit rosters":""}.</p>` : "");
