@@ -173,22 +173,84 @@ table.grid input{accent-color:var(--accent)}
 .prose ul{margin:0;padding-left:1.2em;display:grid;gap:6px}
 footer.note{margin-top:28px;font-size:12px;color:var(--muted);max-width:80ch}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.loader select{padding:7px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.18);color:#fff;font-size:13px;max-width:60vw}
+.loader select option{color:#1c2320;background:#fff}
+.paste{display:grid;gap:14px;margin-bottom:16px;max-width:900px}
+.paste h3{margin:0}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.paste input:not([type=number]),.paste textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.paste textarea{font:13px/1.45 var(--f-mono);resize:vertical}
+.slots{display:flex;flex-wrap:wrap;gap:8px}
+.slots label{display:grid;gap:4px;font-size:12px;font-weight:600;color:var(--muted);text-align:center}
+.slots input{width:4.2em;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);text-align:center;font-family:var(--f-mono)}
+.pactions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.fact.share{cursor:pointer;background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
+.unmatched{font-size:12px;color:var(--warn);margin:-6px 0 12px}
 </style>
 </head>
 <body>
 <header class="top">
   <div class="top-in">
-    <div class="brand"><h1>Trade Scout</h1><span id="edition">Sleeper trade finder</span></div>
+    <div class="brand"><h1>Trade Scout</h1><span id="edition">Fantasy football trade finder</span></div>
     <form class="loader" id="loadForm">
-      <label for="leagueId">Sleeper league ID</label>
-      <input id="leagueId" inputmode="numeric" autocomplete="off" placeholder="e.g. 1388645768943906816" required>
+      <label for="source" class="vh">League site</label>
+      <select id="source">
+        <option value="sleeper">Sleeper</option>
+        <option value="espn">ESPN</option>
+        <option value="paste">Yahoo, CBS, NFL.com or other</option>
+      </select>
+      <label for="leagueId" class="vh">League ID</label>
+      <input id="leagueId" autocomplete="off" placeholder="Sleeper league ID">
       <button class="btn light" id="loadBtn" type="submit">Load league</button>
     </form>
   </div>
 </header>
 
 <div class="wrap">
-  <div class="status" id="status" role="status" aria-live="polite">Enter a Sleeper league ID to start. You'll find it in the league's URL on sleeper.com.</div>
+  <div class="status" id="status" role="status" aria-live="polite">Pick your league's site and enter its league ID to start.</div>
+
+  <section class="paste card" id="pastePanel" hidden aria-label="Set up your league">
+    <h3>Set up your league</h3>
+    <p class="hint">Yahoo, CBS and NFL.com require their own sign-in, so they can't share your league with this page directly. Copy your rosters in instead. It takes about two minutes, and the share link at the end lets your leaguemates skip this step.</p>
+    <div class="pgrid">
+      <div class="field"><label for="pName">League name</label><input id="pName" value="My league"></div>
+      <div class="field"><label for="pRec">Points per catch</label>
+        <select id="pRec"><option value="0">Standard (0)</option><option value="0.5" selected>Half PPR (0.5)</option><option value="1">Full PPR (1)</option></select></div>
+      <div class="field"><label for="pPassTd">Passing TD</label>
+        <select id="pPassTd"><option value="4" selected>4 points</option><option value="6">6 points</option></select></div>
+      <div class="field"><label for="pTep">TE catch bonus</label>
+        <select id="pTep"><option value="0" selected>None</option><option value="0.5">+0.5</option><option value="1">+1</option></select></div>
+    </div>
+    <div class="field"><span class="lab">Starting lineup and bench</span>
+      <div class="slots">
+        <label>QB<input type="number" min="0" max="3" id="sQB" value="1"></label>
+        <label>RB<input type="number" min="0" max="4" id="sRB" value="2"></label>
+        <label>WR<input type="number" min="0" max="5" id="sWR" value="2"></label>
+        <label>TE<input type="number" min="0" max="3" id="sTE" value="1"></label>
+        <label>FLEX<input type="number" min="0" max="4" id="sFLEX" value="1"></label>
+        <label>Superflex<input type="number" min="0" max="2" id="sSUPER_FLEX" value="0"></label>
+        <label>K<input type="number" min="0" max="2" id="sK" value="1"></label>
+        <label>DEF<input type="number" min="0" max="2" id="sDEF" value="1"></label>
+        <label>Bench<input type="number" min="0" max="20" id="sBN" value="6"></label>
+      </div>
+    </div>
+    <div class="pgrid">
+      <div class="field"><label for="pPo">Playoffs start</label><select id="pPo"></select></div>
+      <div class="field"><label for="pPt">Playoff teams</label>
+        <select id="pPt"><option>2</option><option>4</option><option selected>6</option><option>8</option></select></div>
+      <div class="field"><label for="pTd">Trade deadline</label><select id="pTd"></select></div>
+    </div>
+    <div class="field">
+      <label for="pRosters">Rosters</label>
+      <p class="hint">One block per team: the team name on the first line, then its players one per line, with a blank line between teams. Extra text on a line (positions, NFL teams, injury tags) is fine; the app picks out the player names. For defenses, type the team, e.g. <i>Bears D/ST</i>.</p>
+      <textarea id="pRosters" rows="14" spellcheck="false" placeholder="Touchdown Machine&#10;Josh Allen&#10;Bijan Robinson&#10;Ja'Marr Chase&#10;...&#10;&#10;Second Team Name&#10;Lamar Jackson&#10;..."></textarea>
+    </div>
+    <div class="pactions">
+      <button class="btn" id="pasteGo" type="button">Load these rosters</button>
+      <span class="hint" id="pasteMsg"></span>
+    </div>
+  </section>
 
   <div class="desk" id="desk" hidden>
     <aside class="rail" aria-label="Trade settings">
@@ -382,26 +444,209 @@ function scoreFFB(r, pos){
 const normName = n => String(n||"").toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b\.?/g,"").replace(/[^a-z]/g,"");
 
 /* ---------------- loading ---------------- */
-async function loadLeague(id){
+/* ---------------- league sources ---------------- */
+const SRC_NAME = {sleeper:"Sleeper", espn:"ESPN", paste:"your copied rosters"};
+// Sleeper's default scoring, used for leagues entered by hand
+const DEFAULT_SC = {pass_yd:.04, pass_td:4, pass_int:-1, pass_2pt:2, rush_yd:.1, rush_td:6, rush_2pt:2, rec:0, rec_yd:.1, rec_td:6, rec_2pt:2, fum_lost:-2,
+  fgm_0_19:3, fgm_20_29:3, fgm_30_39:3, fgm_40_49:4, fgm_50p:5, xpm:1, fgmiss:-1, xpmiss:-1,
+  def_td:6, st_td:6, sack:1, int:2, fum_rec:2, safe:2, blk_kick:2, ff:1,
+  pts_allow_0:10, pts_allow_1_6:7, pts_allow_7_13:4, pts_allow_14_20:1, pts_allow_21_27:0, pts_allow_28_34:-1, pts_allow_35p:-4};
+const ESPN_TEAM = {1:"ATL",2:"BUF",3:"CHI",4:"CIN",5:"CLE",6:"DAL",7:"DEN",8:"DET",9:"GB",10:"TEN",11:"IND",12:"KC",13:"LV",14:"LAR",15:"MIA",16:"MIN",17:"NE",18:"NO",19:"NYG",20:"NYJ",21:"PHI",22:"ARI",23:"PIT",24:"LAC",25:"SF",26:"SEA",27:"TB",28:"WAS",29:"CAR",30:"JAX",33:"BAL",34:"HOU"};
+const ESPN_POS = {1:"QB",2:"RB",3:"WR",4:"TE",5:"K",16:"DEF"};
+const ESPN_SLOT = {0:"QB",2:"RB",4:"WR",6:"TE",3:"WRRB_FLEX",5:"REC_FLEX",23:"FLEX",7:"SUPER_FLEX",17:"K",16:"DEF"};
+// ESPN stat id -> [Sleeper scoring key, multiplier]
+const ESPN_STAT = {3:["pass_yd",1],5:["pass_yd",.2],6:["pass_yd",.1],7:["pass_yd",.05],4:["pass_td",1],19:["pass_2pt",1],20:["pass_int",1],
+  24:["rush_yd",1],27:["rush_yd",.2],28:["rush_yd",.1],25:["rush_td",1],26:["rush_2pt",1],
+  42:["rec_yd",1],45:["rec_yd",.2],46:["rec_yd",.1],43:["rec_td",1],44:["rec_2pt",1],53:["rec",1],72:["fum_lost",1],
+  74:["fgm_50p",1],77:["fgm_40_49",1],80:["fgm_0_39",1],85:["fgmiss",1],86:["xpm",1],88:["xpmiss",1],214:["fgm_yds",1],
+  89:["pts_allow_0",1],90:["pts_allow_1_6",1],91:["pts_allow_7_13",1],92:["pts_allow_14_20",1],122:["pts_allow_21_27",1],123:["pts_allow_28_34",1],124:["pts_allow_35p",1],
+  128:["yds_allow_0_100",1],129:["yds_allow_100_199",1],130:["yds_allow_200_299",1],131:["yds_allow_300_349",1],132:["yds_allow_350_399",1],133:["yds_allow_400_449",1],134:["yds_allow_450_499",1],135:["yds_allow_500_549",1],136:["yds_allow_550p",1],
+  93:["def_st_td",1],94:["def_td",1],95:["int",1],96:["fum_rec",1],97:["blk_kick",1],98:["safe",1],99:["sack",1],101:["st_td",1],102:["st_td",1],103:["fum_rec_td",1],104:["def_td",1]};
+const DEF_KEY = k => /^(pts_allow|yds_allow)/.test(k) || ["def_st_td","def_td","int","fum_rec","blk_kick","safe","sack","st_td","fum_rec_td"].includes(k);
+// names used to spot a team defense in copied rosters
+const TEAM_WORDS = {ARI:"cardinals",ATL:"falcons",BAL:"ravens",BUF:"bills",CAR:"panthers",CHI:"bears",CIN:"bengals",CLE:"browns",DAL:"cowboys",DEN:"broncos",DET:"lions",GB:"packers",HOU:"texans",IND:"colts",JAX:"jaguars jags",KC:"chiefs",LV:"raiders",LAC:"chargers",LAR:"rams",MIA:"dolphins",MIN:"vikings",NE:"patriots pats",NO:"saints",NYG:"giants",NYJ:"jets",PHI:"eagles",PIT:"steelers",SF:"49ers niners",SEA:"seahawks",TB:"buccaneers bucs",TEN:"titans",WAS:"commanders"};
+
+function weekOfDate(ms, state){
+  const start = Date.parse((state.season_start_date || (state.season+"-09-05")) + "T00:00:00Z");
+  return clamp(Math.floor((ms - start) / (7*864e5)) + 1, 1, 18);
+}
+
+async function fromSleeper(id, state){
+  const base = "https://api.sleeper.app/v1/";
+  const [league, users, rosters] = await Promise.all([getJSON(base+"league/"+id), getJSON(base+"league/"+id+"/users"), getJSON(base+"league/"+id+"/rosters")]);
+  if (!league || !league.league_id) throw new Error("No Sleeper league found with that ID.");
+  if (league.sport !== "nfl") throw new Error("That league isn't an NFL league.");
+  if (String(league.season) !== String(state.season)) throw new Error(`That's a ${league.season} league. Use this season's league ID; Sleeper gives each season its own.`);
+  return {league, users: users || [], rosters: rosters || []};
+}
+
+async function fromESPN(id, state){
+  const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${state.season}/segments/0/leagues/${id}?view=mSettings&view=mTeam&view=mRoster`;
+  let r;
+  try { r = await fetch(url); } catch(e){ throw new Error("Couldn't reach ESPN. Check your connection and try again."); }
+  if (r.status === 401){ try { r = await fetch(url, {credentials:"include"}); } catch(e){} }
+  if (r.status === 401) throw new Error("That ESPN league is private. Ask your commissioner to turn on “Make league viewable to public” in ESPN's league settings, or sign in to ESPN in this browser and try again. You can also choose “Yahoo, CBS, NFL.com or other” and copy your rosters in.");
+  if (r.status === 404) throw new Error(`ESPN has no ${state.season} league with that ID.`);
+  if (!r.ok) throw new Error(`ESPN answered ${r.status}. Try again in a minute.`);
+  const d = await r.json();
+  const s = d.settings || {}, ss = s.scheduleSettings || {}, mp = ss.matchupPeriods || {};
+  const mpc = ss.matchupPeriodCount || 14, pt = ss.playoffTeamCount || 4;
+  const rounds = Math.max(1, Math.ceil(Math.log2(pt)));
+  const poStart = (mp[mpc+1] || [mpc+1])[0];
+  const lastP = mp[mpc+rounds];
+  const lastWeek = lastP ? lastP[lastP.length-1] : poStart + rounds*Math.max(1, ss.playoffMatchupPeriodLength||1) - 1;
+  const sc = {};
+  for (const it of (s.scoringSettings && s.scoringSettings.scoringItems) || []){
+    const m = ESPN_STAT[it.statId]; if (!m) continue;
+    const ov = it.pointsOverrides || {};
+    const pts = DEF_KEY(m[0]) && ov["16"] != null ? ov["16"] : it.points;
+    const keys = m[0] === "fgm_0_39" ? ["fgm_0_19","fgm_20_29","fgm_30_39"] : [m[0]];
+    for (const k of keys) sc[k] = (sc[k]||0) + pts*m[1];
+    if (it.statId === 53){
+      if (ov["6"] != null) sc.bonus_rec_te = ov["6"] - it.points;
+      if (ov["2"] != null) sc.bonus_rec_rb = ov["2"] - it.points;
+      if (ov["4"] != null) sc.bonus_rec_wr = ov["4"] - it.points;
+    }
+  }
+  const lsc = (s.rosterSettings && s.rosterSettings.lineupSlotCounts) || {};
+  const rp = [];
+  for (const sid of [0,2,4,6,3,5,23,7,17,16]) for (let i = 0; i < (lsc[sid]||0); i++) rp.push(ESPN_SLOT[sid]);
+  for (let i = 0; i < (lsc[20]||0); i++) rp.push("BN");
+  for (let i = 0; i < (lsc[21]||0); i++) rp.push("IR");
+  const dl = s.tradeSettings && s.tradeSettings.deadlineDate;
+  const league = {league_id:"espn-"+id, source:"espn", name:s.name || "ESPN league", season:state.season, sport:"nfl", scoring_settings:sc, roster_positions:rp,
+    settings:{playoff_week_start:poStart, playoff_teams:pt, last_week:lastWeek, trade_deadline: dl > 0 ? weekOfDate(dl, state) : 99}};
+  const members = {}; for (const m of d.members || []) members[m.id] = m;
+  const users = [], rosters = [];
+  for (const t of d.teams || []){
+    const m = members[t.primaryOwner] || {};
+    users.push({user_id:"e"+t.id, display_name: m.displayName || [m.firstName, m.lastName].filter(Boolean).join(" "),
+      metadata:{team_name: t.name || [t.location, t.nickname].filter(Boolean).join(" ") || t.abbrev}});
+    const o = (t.record && t.record.overall) || {};
+    rosters.push({roster_id:t.id, owner_id:"e"+t.id, settings:{wins:o.wins||0, losses:o.losses||0, ties:o.ties||0},
+      refs:((t.roster && t.roster.entries) || []).map(e => { const p = (e.playerPoolEntry && e.playerPoolEntry.player) || {};
+        return {name:p.fullName, pos:ESPN_POS[p.defaultPositionId], team:ESPN_TEAM[p.proTeamId], ir: e.lineupSlotId === 21}; })});
+  }
+  return {league, users, rosters};
+}
+
+function hashStr(s){ let h = 5381; for (let i = 0; i < s.length; i++) h = (h*33 ^ s.charCodeAt(i)) >>> 0; return h.toString(36); }
+function fromPaste(cfg, state){
+  const sc = Object.assign({}, DEFAULT_SC, {rec:+cfg.rec||0, pass_td:+cfg.ptd||4, pass_int:+cfg.int||-1, bonus_rec_te:+cfg.tep||0});
+  const rp = [];
+  for (const k of ["QB","RB","WR","TE","FLEX","SUPER_FLEX","K","DEF","BN"]) for (let i = 0; i < (+cfg.slots[k]||0); i++) rp.push(k);
+  const blocks = String(cfg.txt||"").replace(/\r/g,"").split(/\n\s*\n/).map(b => b.split("\n").map(x => x.trim()).filter(Boolean)).filter(b => b.length);
+  if (blocks.length < 2) throw new Error("Paste at least two teams, with a blank line between them.");
+  const users = [], rosters = [];
+  blocks.forEach((b, i) => {
+    users.push({user_id:"p"+(i+1), display_name:"", metadata:{team_name:null}});
+    rosters.push({roster_id:i+1, owner_id:"p"+(i+1), settings:{wins:0, losses:0}, lines:b});
+  });
+  const league = {league_id:"paste-"+hashStr(JSON.stringify(cfg)), source:"paste", name:cfg.name || "My league", season:state.season, sport:"nfl", scoring_settings:sc, roster_positions:rp,
+    settings:{playoff_week_start:+cfg.po||15, playoff_teams:+cfg.pt||6, trade_deadline:+cfg.td||99}};
+  return {league, users, rosters};
+}
+
+/* ---------------- matching names to players ---------------- */
+const SUFFIX = new Set(["jr","sr","ii","iii","iv","v"]);
+const nameWords = s => String(s||"").toLowerCase().replace(/[’'`.]/g,"").split(/[^a-z0-9]+/).filter(w => w && !SUFFIX.has(w));
+function buildNameIndex(){
+  const full = new Map(), short = new Map();
+  const add = (m, k, p) => { if (!m.has(k)) m.set(k, []); m.get(k).push(p); };
+  for (const id in S.P){
+    const p = S.P[id]; if (!POS_OK.has(p.pos) || p.pos === "DEF") continue;
+    const w = nameWords(p.name); if (w.length < 2) continue;
+    add(full, w.join(""), p); add(short, w[0][0] + w.slice(1).join(""), p);
+  }
+  for (const id in S.P){ const p = S.P[id]; p.tot = p.rows.reduce((s,r) => s + (r ? r.raw : 0), 0); }
+  S.nameIdx = {full, short};
+}
+function pickBest(list, pos, team){
+  if (!list || !list.length) return null;
+  let c = list;
+  if (pos){ const f = c.filter(p => p.pos === pos); if (f.length) c = f; }
+  if (team){ const f = c.filter(p => p.team === team); if (f.length) c = f; }
+  return c.slice().sort((a,b) => b.tot - a.tot)[0];
+}
+function matchRef(ref){
+  if (!ref || !ref.name) return null;
+  if (ref.pos === "DEF") return ref.team && S.P[ref.team] ? S.P[ref.team] : null;
+  const w = nameWords(ref.name);
+  return pickBest(S.nameIdx.full.get(w.join("")), ref.pos, ref.team) || (w.length > 1 ? pickBest(S.nameIdx.short.get(w[0][0] + w.slice(1).join("")), ref.pos, ref.team) : null);
+}
+function matchLine(line){
+  const w = nameWords(line); if (!w.length) return null;
+  const toks = new Set(w);
+  const pos = ["qb","rb","wr","te","k"].find(x => toks.has(x));
+  const team = Object.keys(STAD).find(t => toks.has(t.toLowerCase())) || null;
+  for (let n = Math.min(4, w.length); n >= 2; n--){
+    for (let i = 0; i + n <= w.length; i++){
+      const p = pickBest(S.nameIdx.full.get(w.slice(i, i+n).join("")), pos && pos.toUpperCase(), team);
+      if (p) return p;
+    }
+  }
+  for (let i = 0; i < w.length - 1; i++){
+    if (w[i].length !== 1) continue;
+    for (let n = 1; n <= 2 && i + n < w.length; n++){
+      const p = pickBest(S.nameIdx.short.get(w[i] + w.slice(i+1, i+1+n).join("")), pos && pos.toUpperCase(), team);
+      if (p) return p;
+    }
+  }
+  // team defenses: "Bears D/ST", "CHI DEF", "Chicago Bears"
+  const low = " " + w.join(" ") + " ";
+  const defTag = /\b(d\/st|dst|def|defense|d)\b/i.test(line);
+  for (const ab in TEAM_WORDS){
+    const hitNick = TEAM_WORDS[ab].split(" ").some(x => low.includes(" "+x+" "));
+    const hitAbbr = toks.has(ab.toLowerCase()) && defTag;
+    if ((hitNick && (defTag || w.length <= 3)) || hitAbbr) return S.P[ab] || null;
+  }
+  return null;
+}
+function resolveRoster(r){
+  const ids = [], reserve = [], missing = [];
+  if (r.refs){
+    for (const ref of r.refs){ const p = matchRef(ref); if (p){ ids.push(p.id); if (ref.ir) reserve.push(p.id); } else if (ref.name) missing.push(ref.name); }
+  } else if (r.lines){
+    r.lines.forEach((ln, i) => {
+      if (i === 0){ r.teamName = ln.replace(/[:\-–]+$/,"").trim(); return; }
+      const p = matchLine(ln);
+      if (p){ if (!ids.includes(p.id)) ids.push(p.id); }
+      else if (/[a-z]{2,}\s+[a-z]{2,}/i.test(ln) && ln.length < 60 && !/^(bench|starters?|ir|reserve|injured|bn|taxi)\b/i.test(ln)) missing.push(ln);
+    });
+  }
+  return {ids, reserve, missing};
+}
+
+async function packCfg(cfg){
+  const s = new Blob([JSON.stringify(cfg)]).stream().pipeThrough(new CompressionStream("deflate-raw"));
+  const b = new Uint8Array(await new Response(s).arrayBuffer()); let bin = "";
+  for (const x of b) bin += String.fromCharCode(x);
+  return btoa(bin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+async function unpackCfg(str){
+  const bin = atob(str.replace(/-/g,"+").replace(/_/g,"/"));
+  const s = new Blob([Uint8Array.from(bin, c => c.charCodeAt(0))]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return JSON.parse(await new Response(s).text());
+}
+
+async function loadLeague(spec){
   if (S.loading) return;
-  S.loading = true; $("#loadBtn").disabled = true;
+  if (typeof spec === "string") spec = {src:"sleeper", id:spec};
+  S.loading = true; $("#loadBtn").disabled = true; $("#pasteGo").disabled = true;
   try {
     setStatus("Loading league…");
-    const base = "https://api.sleeper.app/v1/";
-    const [league, users, rosters, state] = await Promise.all([
-      getJSON(base+"league/"+id), getJSON(base+"league/"+id+"/users"),
-      getJSON(base+"league/"+id+"/rosters"), getJSON(base+"state/nfl")
-    ]);
-    if (!league || !league.league_id) throw new Error("No league found with that ID.");
-    if (league.sport !== "nfl") throw new Error("That league isn't an NFL league.");
-    if (String(league.season) !== String(state.season)) throw new Error(`That's a ${league.season} league. Use this season's league ID; Sleeper gives each season its own.`);
-    S.league = league; S.users = users || []; S.rosters = rosters || []; S.state = state;
+    const state = await getJSON("https://api.sleeper.app/v1/state/nfl");
+    const L = spec.src === "espn" ? await fromESPN(spec.id, state) : spec.src === "paste" ? fromPaste(spec.cfg, state) : await fromSleeper(spec.id, state);
+    const league = L.league;
+    league.source = league.source || "sleeper";
+    S.spec = spec;
+    S.league = league; S.users = L.users; S.rosters = L.rosters; S.state = state;
     S.sc = league.scoring_settings || {}; S.recW = S.sc.rec || 0;
     S.cw = state.season_type === "regular" ? Math.max(1, state.week) : (state.season_type === "pre" ? 1 : 18);
     S.poStart = league.settings.playoff_week_start || 15;
     const pt = league.settings.playoff_teams || 6;
     const rounds = Math.max(1, Math.ceil(Math.log2(pt)));
-    S.lastWeek = Math.min(18, S.poStart + rounds - 1);
+    S.lastWeek = Math.min(18, league.settings.last_week || (S.poStart + rounds - 1));
     if (S.cw > S.lastWeek) throw new Error("This league's season is over.");
     S.weeks = []; for (let w = S.cw; w <= S.lastWeek; w++) S.weeks.push(w);
     S.NW = S.weeks.length;
@@ -427,21 +672,25 @@ async function loadLeague(id){
     buildPlayers(projRes);
     if (needStats) buildSosFromStats(statRes, statWeeks);
     if (FFB) attachFFB();
+    buildNameIndex();
     buildTeams();
+    const nTeams = S.teams.filter(t => t.ids.length).length;
+    if (nTeams < 2) throw new Error("Couldn't find players on at least two teams. Check that each team's players are listed one per line, with a blank line between teams.");
     setStatus("Checking game-day weather…");
     await loadWeather();
-    restorePrefs(id);
+    restorePrefs(league.league_id);
     fillControls();
     renderFacts();
     $("#desk").hidden = false;
     recompute();
     runSearch();
-    store.set("lastLeague", id);
+    store.set("lastSpec", spec.src === "paste" ? {src:"paste"} : spec);
+    if (spec.src === "paste"){ store.set("pasteCfg", spec.cfg); $("#pastePanel").hidden = true; }
   } catch (e){
     console.error(e);
     setStatus(`<span class="err">${esc(e.message || "Something went wrong loading the league.")}</span>`);
   } finally {
-    S.loading = false; $("#loadBtn").disabled = false;
+    S.loading = false; $("#loadBtn").disabled = false; $("#pasteGo").disabled = false;
   }
 }
 
@@ -516,16 +765,18 @@ function attachFFB(){
 
 function buildTeams(){
   const uById = {}; for (const u of S.users) uById[u.user_id] = u;
+  S.unmatched = [];
   S.teams = S.rosters.map(r => {
     const u = uById[r.owner_id] || {};
-    const name = (u.metadata && u.metadata.team_name) || u.display_name || `Team ${r.roster_id}`;
-    const ids = (r.players || []).map(String);
+    let ids = (r.players || []).map(String), reserve = (r.reserve || []).map(String);
+    if (!r.players){ const got = resolveRoster(r); ids = got.ids; reserve = got.reserve; S.unmatched.push(...got.missing); }
+    const name = (u.metadata && u.metadata.team_name) || r.teamName || u.display_name || `Team ${r.roster_id}`;
     for (const id of ids){
       if (!S.P[id]) S.P[id] = {id, name: isNaN(+id) ? id+" D/ST" : "Unlisted player", pos: isNaN(+id) ? "DEF" : "?", team:null, inj:null, rows:new Array(S.fullWeeks.length).fill(null), ffb:null};
       S.P[id].owner = r.roster_id;
     }
-    return {rid:r.roster_id, name, manager:u.display_name||"", ids, reserve:new Set((r.reserve||[]).map(String)),
-            rec:`${r.settings?.wins||0}-${r.settings?.losses||0}${r.settings?.ties?"-"+r.settings.ties:""}`};
+    return {rid:r.roster_id, name, manager:u.display_name||"", ids, reserve:new Set(reserve),
+            rec: S.league.source === "paste" ? "" : `${r.settings?.wins||0}-${r.settings?.losses||0}${r.settings?.ties?"-"+r.settings.ties:""}`};
   });
   S.teamById = {}; for (const t of S.teams) S.teamById[t.rid] = t;
 }
@@ -1006,7 +1257,7 @@ function renderOutlook(){
   const total = metricArr(base, "reg").r, po = metricArr(base, "po").p;
   const lgRank = S.teams.map(t => ({rid:t.rid, v:metricArr(S.base[t.rid], S.mode).m})).sort((a,b)=>b.v-a.v).findIndex(x=>x.rid===A.rid)+1;
   $("#outlook").innerHTML = `
-    <div class="card"><h3>${esc(A.name)} · ${esc(A.rec)}</h3>
+    <div class="card"><h3>${esc(A.name)}${A.rec?" · "+esc(A.rec):""}</h3>
       <p class="hint" style="margin-bottom:8px">Projected starting lineup points each week (bars) against the league median (line). Shaded weeks are your playoffs. Ranks <b>${ordinal(lgRank)}</b> of ${S.teams.length} on the current setting; ${(total/Math.max(1,S.regIdx.length)).toFixed(1)} pts/wk in the regular season and ${po.toFixed(1)} across the playoffs.</p>
       <div class="chart">${svg}</div></div>
     <div class="card"><h3>Where you're strong and thin</h3><div class="strength">${tiles}</div></div>
@@ -1026,7 +1277,9 @@ function renderHow(){
   $("#how").innerHTML = `
     <h3>What feeds the numbers</h3>
     <ul>
-      <li><b>Your league settings</b> from Sleeper: scoring, starting slots, roster size, playoff weeks and trade deadline.</li>
+      ${S.league.source === "paste"
+        ? `<li><b>Your league settings</b> as you entered them, with standard scoring for anything not on the form. Rosters come from the names you copied in${S.unmatched.length ? `; ${S.unmatched.length} line${S.unmatched.length===1?"":"s"} didn't match a player and ${S.unmatched.length===1?"was":"were"} left out` : ""}.</li>`
+        : `<li><b>Your league settings</b> from ${SRC_NAME[S.league.source]}: scoring, starting slots, roster size, playoff weeks and trade deadline.${S.league.source === "espn" ? " ESPN rosters are matched to Sleeper's player list by name and team." : ""}</li>`}
       <li><b>Sleeper weekly projections</b> for Weeks ${S.cw}–${S.lastWeek}, scored with your league's exact scoring. Bye weeks count as zero.</li>
       ${ffb}
       <li><b>Weather</b>: Open-Meteo forecast for game day when a game is within two weeks and outdoors; after that, a small December penalty for cold, open-air stadiums. Roofed stadiums are left alone.</li>
@@ -1059,12 +1312,16 @@ function renderFacts(){
     else facts.push(`Trade deadline Wk ${td} (${left === 0 ? "this week" : left + (left===1?" week":" weeks") + " left"})`);
   }
   const src = FFB ? `<span class="fact src">With Fantasy Footballers data · ${esc(FFB.asOf)}</span>` : "";
-  $("#foot").innerHTML = `<b>${esc(L.name)}</b> · ${L.season} · Week ${S.cw}. Data from Sleeper${FFB?", The Fantasy Footballers (FootClan)":""} and Open-Meteo. Projections are estimates, not guarantees.`;
-  S.factsHTML = `<span class="facts">${facts.map(f=>`<span class="fact">${esc(f)}</span>`).join("")}${warn}${src}</span>`;
+  $("#foot").innerHTML = `<b>${esc(L.name)}</b> · ${L.season} · Week ${S.cw}. League from ${S.league.source === "paste" ? "your copied rosters" : SRC_NAME[S.league.source]}. Projections from Sleeper${FFB?" and The Fantasy Footballers (FootClan)":""}; weather from Open-Meteo. Projections are estimates, not guarantees.`;
+  const tools = `<button class="fact share" type="button" id="shareBtn">Copy link for your league</button>` + (L.source === "paste" ? `<button class="fact" type="button" id="editBtn">Edit rosters</button>` : "");
+  S.factsHTML = `<span class="facts">${facts.map(f=>`<span class="fact">${esc(f)}</span>`).join("")}${warn}${src}${tools}</span>`
+    + (S.unmatched.length ? `<p class="unmatched">Couldn't match ${S.unmatched.length} name${S.unmatched.length===1?"":"s"}, so ${S.unmatched.length===1?"it's":"they're"} left out: ${S.unmatched.slice(0,12).map(esc).join(", ")}${S.unmatched.length>12?"…":""}. Check the spelling${L.source==="paste"?" under Edit rosters":""}.</p>` : "");
   const status = $("#status"); status.insertAdjacentHTML("afterend", "");
   const old = document.getElementById("factsRow"); if (old) old.remove();
   const row = document.createElement("div"); row.id = "factsRow"; row.style.marginBottom = "14px"; row.innerHTML = S.factsHTML;
   status.after(row);
+  $("#shareBtn").onclick = shareLink;
+  if ($("#editBtn")) $("#editBtn").onclick = () => { $("#pastePanel").hidden = false; $("#pastePanel").scrollIntoView({behavior:"smooth"}); };
   $("#poLabel").textContent = `Playoffs ${S.poStart}–${S.lastWeek}`;
   $("#modeHint").textContent = `Balanced counts each playoff week (Wk ${S.poStart}–${S.lastWeek}) double.`;
 }
@@ -1090,7 +1347,59 @@ function restorePrefs(id){
 }
 
 /* ---------------- wiring ---------------- */
-$("#loadForm").addEventListener("submit", e => { e.preventDefault(); const id = $("#leagueId").value.trim().replace(/\D/g,""); if (id) loadLeague(id); });
+const SLOT_KEYS = ["QB","RB","WR","TE","FLEX","SUPER_FLEX","K","DEF","BN"];
+function readPasteForm(){
+  const slots = {}; for (const k of SLOT_KEYS) slots[k] = clamp(+$("#s"+k).value || 0, 0, 20);
+  return {name:$("#pName").value.trim() || "My league", rec:$("#pRec").value, ptd:$("#pPassTd").value, tep:$("#pTep").value,
+          slots, po:$("#pPo").value, pt:$("#pPt").value, td:$("#pTd").value, txt:$("#pRosters").value};
+}
+function setPasteForm(c){
+  if (!c) return;
+  $("#pName").value = c.name || ""; $("#pRec").value = c.rec ?? "0.5"; $("#pPassTd").value = c.ptd ?? "4"; $("#pTep").value = c.tep ?? "0";
+  for (const k of SLOT_KEYS) if (c.slots && c.slots[k] != null) $("#s"+k).value = c.slots[k];
+  if (c.po) $("#pPo").value = c.po; if (c.pt) $("#pPt").value = c.pt; if (c.td) $("#pTd").value = c.td;
+  $("#pRosters").value = c.txt || "";
+}
+function setSource(src){
+  $("#source").value = src;
+  const paste = src === "paste";
+  $("#leagueId").hidden = paste; $("#loadBtn").hidden = paste;
+  $("#leagueId").placeholder = src === "espn" ? "ESPN league ID or league URL" : "Sleeper league ID";
+  $("#pastePanel").hidden = !paste || !!(S.league && S.league.source === "paste");
+}
+async function shareLink(){
+  const base = location.origin + location.pathname;
+  let url;
+  if (S.spec.src === "paste") url = base + "#p=" + await packCfg(S.spec.cfg);
+  else if (S.spec.src === "espn") url = base + "?espn=" + encodeURIComponent(S.spec.id);
+  else url = base + "?league=" + encodeURIComponent(S.spec.id);
+  const btn = $("#shareBtn");
+  try { await navigator.clipboard.writeText(url); btn.textContent = "Link copied"; }
+  catch(e){ setStatus(`<span>Copy this link:</span> <input readonly value="${esc(url)}" style="flex:1;min-width:0;padding:4px 6px;border:1px solid var(--line);border-radius:4px;font:12px var(--f-mono)" onclick="this.select()">`); }
+  setTimeout(() => { if (btn) btn.textContent = "Copy link for your league"; }, 2500);
+}
+$("#source").addEventListener("change", e => setSource(e.target.value));
+$("#loadForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const src = $("#source").value;
+  if (src === "paste"){ $("#pastePanel").hidden = false; return; }
+  const raw = $("#leagueId").value.trim();
+  const m = raw.match(/leagueId=(\d+)/i) || raw.match(/leagues\/(\d+)/) || raw.match(/(\d{3,})/);
+  if (!m){ setStatus(`<span class="err">Enter a league ID. It's the long number in your league's web address.</span>`); return; }
+  $("#leagueId").value = m[1];
+  if (location.search || location.hash) history.replaceState(null, "", location.pathname);
+  loadLeague({src, id:m[1]});
+});
+$("#pasteGo").addEventListener("click", () => {
+  const cfg = readPasteForm();
+  store.set("pasteCfg", cfg);
+  if (location.search || location.hash) history.replaceState(null, "", location.pathname);
+  loadLeague({src:"paste", cfg});
+});
+$("#pRosters").addEventListener("input", () => {
+  const n = $("#pRosters").value.replace(/\r/g,"").split(/\n\s*\n/).filter(b => b.trim()).length;
+  $("#pasteMsg").textContent = n ? `${n} team${n===1?"":"s"} so far` : "";
+});
 $("#runBtn").addEventListener("click", runSearch);
 $("#team").addEventListener("change", e => { S.focus = +e.target.value; savePrefs(); runSearch(); });
 $("#blend").addEventListener("input", e => { const v = +e.target.value; $("#blendVal").textContent = `${100-v} / ${v}`; });
@@ -1107,11 +1416,27 @@ $$(".tabs [role=tab]").forEach(b => b.onclick = () => {
   $$("[data-pane]").forEach(p => p.hidden = p.dataset.pane !== b.dataset.tab);
 });
 
-(function init(){
-  if (FFB) { $("#edition").textContent = "Sleeper trade finder · Fantasy Footballers edition"; }
-  const q = new URLSearchParams(location.search).get("league");
-  const id = q || store.get("lastLeague") || (DEFAULT_LEAGUE.startsWith("/*") ? "" : DEFAULT_LEAGUE);
-  if (id){ $("#leagueId").value = id; loadLeague(id); }
+(async function init(){
+  if (FFB) { $("#edition").textContent = "Fantasy football trade finder · Fantasy Footballers edition"; }
+  for (let w = 13; w <= 18; w++) $("#pPo").insertAdjacentHTML("beforeend", `<option value="${w}"${w===15?" selected":""}>Week ${w}</option>`);
+  $("#pTd").insertAdjacentHTML("beforeend", `<option value="99">No deadline</option>`);
+  for (let w = 6; w <= 14; w++) $("#pTd").insertAdjacentHTML("beforeend", `<option value="${w}"${w===11?" selected":""}>Week ${w}</option>`);
+  setPasteForm(store.get("pasteCfg"));
+  const qp = new URLSearchParams(location.search);
+  const h = location.hash.match(/^#p=([\w-]+)/);
+  if (h){
+    try { const cfg = await unpackCfg(h[1]); setPasteForm(cfg); setSource("paste"); $("#pastePanel").hidden = true; loadLeague({src:"paste", cfg}); }
+    catch(e){ setSource("paste"); setStatus(`<span class="err">That share link didn't come through whole. Ask for it again, or copy the rosters in below.</span>`); }
+    return;
+  }
+  if (qp.get("espn")){ setSource("espn"); $("#leagueId").value = qp.get("espn"); loadLeague({src:"espn", id:qp.get("espn")}); return; }
+  if (qp.get("league")){ setSource("sleeper"); $("#leagueId").value = qp.get("league"); loadLeague({src:"sleeper", id:qp.get("league")}); return; }
+  const last = store.get("lastSpec");
+  if (last && last.src === "paste"){ const cfg = store.get("pasteCfg"); setSource("paste"); if (cfg){ $("#pastePanel").hidden = true; loadLeague({src:"paste", cfg}); } return; }
+  if (last && last.id){ setSource(last.src); $("#leagueId").value = last.id; loadLeague(last); return; }
+  const id = store.get("lastLeague") || (DEFAULT_LEAGUE.startsWith("/*") ? "" : DEFAULT_LEAGUE);
+  setSource("sleeper");
+  if (id){ $("#leagueId").value = id; loadLeague({src:"sleeper", id}); }
 })();
 </script>
 </body>
