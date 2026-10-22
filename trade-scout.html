@@ -803,9 +803,9 @@ async function loadLeague(spec){
     await Promise.all([loadWeather(), loadMarket(), loadESPNProj()]);
     restorePrefs(league.league_id);
     fillControls();
+    recompute();
     renderFacts();
     $("#desk").hidden = false;
-    recompute();
     runSearch();
     store.set("lastSpec", spec.src === "paste" ? {src:"paste"} : spec);
     if (spec.src === "paste"){ store.set("pasteCfg", spec.cfg); $("#pastePanel").hidden = true; }
